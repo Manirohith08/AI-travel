@@ -82,7 +82,7 @@ function CreateTrip() {
     }
 
     if (
-      formData?.totalDays > 12 ||
+      formData?.totalDays > 5 ||
       !formData?.location ||
       !formData?.budget ||
       !formData?.traveler
