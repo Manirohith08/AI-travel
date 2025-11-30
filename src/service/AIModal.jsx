@@ -1,11 +1,11 @@
-// service/AIModal.js
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const apiKey = import.meta.env.VITE_GOOGLE_GEMINI_AI_API_KEY;
 const genAI = new GoogleGenerativeAI(apiKey);
 
+// 👇 This selects the Gemini 2.0 Flash model
 const model = genAI.getGenerativeModel({
-  model: "models/gemini-1.5-flash-latest", // ✅ FIXED
+  model: "gemini-2.0-flash",
 });
 
 const generationConfig = {
