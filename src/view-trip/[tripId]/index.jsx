@@ -1,8 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { toast } from 'sonner';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/service/firebaseConfig';
+import { useLocation } from "react-router-dom";
 
 // Components
 import InfoSection from '../components/InfoSection';
@@ -11,34 +8,17 @@ import TripPlace from '../components/TripPlace';
 import Footer from '../components/Footer';
 
 function ViewTrip() {
-  const { tripId } = useParams(); // get ID from route param
-  const [trip, setTrip] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const location = useLocation();
 
-  const GetTripData = async () => {
-    try {
-      const docRef = doc(db, 'AiTrips', tripId); // reference document
-      const docSnap = await getDoc(docRef);       // fetch it
+  // ----------- Extract trip data from React Router state -----------
+  const data = location.state || {};
 
-      if (docSnap.exists()) {
-        const tripData = docSnap.data();
-        console.log('Document data:', tripData);
-        setTrip(tripData);
-      } else {
-        toast.error('Trip not found!');
-      }
-    } catch (error) {
-      console.error('Error fetching trip:', error);
-      toast.error('Failed to load trip data.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const trip = data.tripData || null;
+  const userSelection = data.userSelection || {};
 
-  useEffect(() => {
-    if (tripId) GetTripData();
-  }, [tripId]);
+  const [loading, setLoading] = useState(false);
 
+  // -------- Loading Screen --------
   if (loading) {
     return (
       <>
@@ -80,10 +60,7 @@ function ViewTrip() {
         `}</style>
         
         <div className="min-h-screen bg-gradient-to-br from-orange-200 via-red-200 to-purple-200 relative overflow-hidden flex items-center justify-center">
-          {/* Sunset background */}
           <div className="absolute top-8 right-8 w-24 h-24 bg-gradient-to-br from-orange-400 to-red-500 rounded-full sunset-glow opacity-80"></div>
-          
-          {/* Mountain silhouettes */}
           <div className="absolute bottom-0 left-0 right-0">
             <svg className="w-full h-32" viewBox="0 0 1200 200" preserveAspectRatio="none">
               <path d="M0,200 L0,100 L200,60 L400,80 L600,40 L800,60 L1000,50 L1200,70 L1200,200 Z" 
@@ -96,15 +73,9 @@ function ViewTrip() {
               </defs>
             </svg>
           </div>
-          
-          {/* Driving car */}
           <div className="car-drive absolute bottom-24 left-0 text-3xl">🚗</div>
-          
-          {/* Road elements */}
           <div className="absolute bottom-16 left-0 right-0 h-2 bg-gray-800 opacity-30"></div>
           <div className="road-trip absolute bottom-16 left-0 w-20 h-1 bg-yellow-400 opacity-60"></div>
-          
-          {/* Loading content */}
           <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 p-12 text-center relative z-10">
             <div className="compass-spin text-6xl mb-6">🧭</div>
             <h2 className="text-3xl font-bold text-gray-800 mb-4">Planning Your Journey</h2>
@@ -115,52 +86,34 @@ function ViewTrip() {
               <div className="loading-pulse w-4 h-4 bg-purple-500 rounded-full" style={{ animationDelay: '0.4s' }}></div>
             </div>
           </div>
-          
-          {/* Floating travel elements */}
-          <div className="absolute top-1/4 left-1/4 text-2xl mountain-peak">🏔️</div>
-          <div className="absolute top-1/3 right-1/4 text-2xl mountain-peak" style={{ animationDelay: '1s' }}>🗻</div>
-          <div className="absolute top-1/2 left-1/5 text-lg sunset-glow">🌅</div>
         </div>
       </>
     );
   }
 
+  // -------- Trip Not Found --------
   if (!trip) {
     return (
-      <>
-        <style jsx>{`
-          @keyframes brokenPath {
-            0% { transform: translateX(0px) rotate(0deg); }
-            25% { transform: translateX(10px) rotate(2deg); }
-            50% { transform: translateX(-5px) rotate(-1deg); }
-            75% { transform: translateX(8px) rotate(1deg); }
-            100% { transform: translateX(0px) rotate(0deg); }
-          }
-          @keyframes sadFace {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-          }
-          .broken-path { animation: brokenPath 2s ease-in-out infinite; }
-          .sad-face { animation: sadFace 3s ease-in-out infinite; }
-        `}</style>
-        
-        <div className="min-h-screen bg-gradient-to-br from-gray-200 via-slate-200 to-gray-300 relative overflow-hidden flex items-center justify-center">
-          {/* Cloudy sky */}
-          <div className="absolute top-10 left-10 w-16 h-10 bg-gray-400 rounded-full opacity-50"></div>
-          <div className="absolute top-16 left-20 w-12 h-8 bg-gray-400 rounded-full opacity-40"></div>
-          <div className="absolute top-12 right-20 w-20 h-12 bg-gray-400 rounded-full opacity-45"></div>
-          
-          {/* Error content */}
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 p-12 text-center relative z-10">
-            <div className="sad-face text-6xl mb-6">😔</div>
-            <h2 className="text-3xl font-bold text-gray-800 mb-4">Oops! Trip Not Found</h2>
-            <p className="text-xl text-gray-600 mb-8">We couldn't find your travel plans.</p>
-            <div className="broken-path text-4xl">🗺️</div>
-          </div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-200">
+        <div className="bg-white p-10 rounded-3xl shadow-xl text-center">
+          <h2 className="text-3xl mb-4">⚠️ Trip Not Found</h2>
+          <p>Please regenerate your trip.</p>
         </div>
-      </>
+      </div>
     );
   }
+
+  // -------- Normalize keys --------
+  const hotelOptions =
+    trip.hotelOptions ||
+    trip.HotelOptions ||
+    trip.hotels_options ||
+    [];
+
+  const itinerary =
+    trip.itinerary ||
+    trip.Itinerary ||
+    [];
 
   return (
     <>
@@ -221,89 +174,26 @@ function ViewTrip() {
       `}</style>
 
       <div className="min-h-screen bg-gradient-to-br from-amber-100 via-orange-100 to-red-100 relative overflow-hidden">
-        {/* Desert/Journey themed background */}
         
-        {/* Desert sun */}
-        <div className="absolute top-6 right-6 w-20 h-20 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full oasis-shimmer"></div>
-        
-        {/* Sand dunes */}
-        <div className="absolute bottom-0 left-0 right-0">
-          <svg className="w-full h-40" viewBox="0 0 1200 250" preserveAspectReparseAspectRatio="none">
-            <path d="M0,250 L0,150 L150,120 L300,140 L450,100 L600,130 L750,110 L900,140 L1050,120 L1200,150 L1200,250 Z" 
-                  fill="url(#desertGradient)" opacity="0.4"/>
-            <path d="M0,250 L0,180 L200,160 L400,170 L600,150 L800,165 L1000,155 L1200,170 L1200,250 Z" 
-                  fill="url(#desertGradient2)" opacity="0.3"/>
-            <defs>
-              <linearGradient id="desertGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#f59e0b" />
-                <stop offset="100%" stopColor="#d97706" />
-              </linearGradient>
-              <linearGradient id="desertGradient2" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#fbbf24" />
-                <stop offset="100%" stopColor="#f59e0b" />
-              </linearGradient>
-            </defs>
-          </svg>
-        </div>
-        
-        {/* Moving elements */}
-        <div className="train-move absolute bottom-28 left-0 text-3xl" style={{ animationDelay: '3s' }}>🚂</div>
-        <div className="camel-walk absolute bottom-32 left-0 text-2xl" style={{ animationDelay: '8s' }}>🐪</div>
-        <div className="journey-path absolute top-20 left-0 text-2xl" style={{ animationDelay: '5s' }}>🎈</div>
-        
-        {/* Hot air balloon */}
-        <div className="hot-air-balloon absolute top-16 right-1/4 text-4xl">🎈</div>
-        
-        {/* Desert elements */}
-        <div className="absolute bottom-40 left-1/4 text-2xl oasis-shimmer">🌵</div>
-        <div className="absolute bottom-36 left-1/3 text-xl oasis-shimmer" style={{ animationDelay: '1s' }}>🌵</div>
-        <div className="absolute bottom-44 right-1/4 text-2xl oasis-shimmer" style={{ animationDelay: '2s' }}>🌵</div>
-        
-        {/* Oasis */}
-        <div className="absolute bottom-48 right-1/3 text-3xl oasis-shimmer">🏝️</div>
-        
-        {/* Floating journey elements */}
-        <div className="absolute top-1/4 left-1/5 w-16 h-16 bg-gradient-to-br from-amber-200 to-orange-200 rounded-full opacity-40 scroll-float flex items-center justify-center">
-          <span className="text-2xl">📜</span>
-        </div>
-        <div className="absolute top-1/3 right-1/5 w-18 h-18 bg-gradient-to-br from-yellow-200 to-amber-200 rounded-full opacity-35 hot-air-balloon flex items-center justify-center">
-          <span className="text-2xl">🧭</span>
-        </div>
-        <div className="absolute top-2/5 left-1/3 w-14 h-14 bg-gradient-to-br from-orange-200 to-red-200 rounded-full opacity-45 scroll-float flex items-center justify-center" style={{ animationDelay: '1s' }}>
-          <span className="text-xl">⚱️</span>
-        </div>
-        
-        {/* Desert wind effect */}
-        <div className="desert-wind absolute top-1/2 left-0 text-lg opacity-30">💨</div>
-        <div className="desert-wind absolute top-3/5 left-0 text-lg opacity-25" style={{ animationDelay: '4s' }}>💨</div>
-        
-        {/* Adventure elements */}
-        <div className="absolute top-1/5 left-8 text-xl scroll-float">🏛️</div>
-        <div className="absolute top-1/4 right-12 text-lg oasis-shimmer">🕌</div>
-        <div className="absolute top-2/5 left-12 text-xl scroll-float" style={{ animationDelay: '2s' }}>🏺</div>
-        <div className="absolute top-3/5 right-8 text-lg oasis-shimmer" style={{ animationDelay: '3s' }}>🎪</div>
-        
-        {/* Main Content */}
         <div className="relative z-10 p-6 md:px-20 lg:px-36 xl:px-48">
-          {/* Content overlay with subtle background */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/60 p-8 mb-8 relative overflow-hidden">
-            <div className="absolute top-4 right-4 compass-needle text-2xl opacity-60">🧭</div>
-            <div className="absolute bottom-4 left-4 scroll-float text-xl opacity-40">📍</div>
-            
-            <InfoSection trip={trip} />
+
+          {/* INFO SECTION */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/60 p-8 mb-8 relative">
+            <InfoSection trip={{ ...trip, userSelection }} />
           </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/60 p-8 mb-8 relative overflow-hidden">
-            <div className="absolute top-4 right-4 oasis-shimmer text-2xl opacity-60">🏨</div>
-            <Hotels trip={trip} />
+
+          {/* HOTELS */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/60 p-8 mb-8 relative">
+            <Hotels trip={{ ...trip, hotelOptions }} />
           </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/60 p-8 mb-8 relative overflow-hidden">
-            <div className="absolute top-4 right-4 scroll-float text-2xl opacity-60">🗺️</div>
-            <TripPlace trip={trip} />
+
+          {/* ITINERARY */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-xl border border-white/60 p-8 mb-8 relative">
+            <TripPlace trip={{ ...trip, itinerary }} />
           </div>
-          
+
           <Footer />
+
         </div>
       </div>
     </>
