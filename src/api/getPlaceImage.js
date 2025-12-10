@@ -1,21 +1,32 @@
-export const getPlaceImage = async (placeName) => {
-  const accessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
+import axios from "axios";
+import { GOOGLE_PLACES_API_KEY } from "./config";
 
+export async function getPlaceImage(query) {
   try {
-    const response = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(
-        placeName
-      )}&per_page=1&client_id=${accessKey}`
-    );
+    // 🔹 1. Search Google Places
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(
+      query
+    )}&key=${GOOGLE_PLACES_API_KEY}`;
 
-    const data = await response.json();
-    if (data.results && data.results.length > 0) {
-      return data.results[0].urls.regular;
-    } else {
-      return "https://via.placeholder.com/600x400?text=No+Image+Found"; // fallback
+    const searchResp = await axios.get(searchUrl);
+    const place = searchResp.data.results?.[0];
+
+    if (place?.photos?.length > 0) {
+      const photoRef = place.photos[0].photo_reference;
+      return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=1000&photoreference=${photoRef}&key=${GOOGLE_PLACES_API_KEY}`;
     }
-  } catch (error) {
-    console.error("Image fetch error:", error);
-    return "https://via.placeholder.com/600x400?text=Error+Fetching+Image";
+
+    // 🔹 2. Unsplash fallback
+    const unsplashUrl = `https://source.unsplash.com/600x400/?${encodeURIComponent(
+      query
+    )}`;
+    return unsplashUrl;
+  } catch (err) {
+    console.log("Google Lookup Failed → fallback to Wiki");
   }
-};
+
+  // 🔹 3. Wikipedia fallback
+  return `https://source.unsplash.com/600x400/?travel,${encodeURIComponent(
+    query
+  )}`;
+}
