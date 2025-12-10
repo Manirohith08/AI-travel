@@ -87,7 +87,7 @@ function CreateTrip() {
     });
   };
 
-  const OnGenerateTrip = async () => {
+ const OnGenerateTrip = async () => {
     const user = localStorage.getItem("user");
     if (!user) {
       setOpenDialog(true);
@@ -119,41 +119,69 @@ function CreateTrip() {
 
       const result = await chatSession.sendMessage(FINAL_PROMPT);
       const responseText = await result.response.text();
-      console.log("AI Response:", responseText);
+      console.log("AI Raw Response:", responseText);
 
+      // 1. Clean the response using your helper function
       const parsed = extractValidJSON(responseText);
-      if (!parsed || (!parsed.travelPlan && !parsed.HotelOptions)) {
+
+      // 2. KEY FIX: Normalize the data if AI uses different names
+      // (This fixes the error where "hotels" was undefined)
+      if (parsed) {
+        parsed.HotelOptions = parsed.HotelOptions || parsed.hotels || [];
+        parsed.Itinerary = parsed.Itinerary || parsed.itinerary || [];
+        parsed.travelPlan = parsed.travelPlan || parsed.TravelPlanDetails || {};
+      }
+
+      // 3. Updated Validation Check (checks for fallback keys too)
+      if (!parsed || (!parsed.travelPlan && !parsed.HotelOptions && !parsed.hotels)) {
+        console.error("Validation Failed. Parsed Object:", parsed);
         toast.error("Failed to parse AI response. Try again.");
         setLoading(false);
         return;
       }
 
+      // 4. Process Hotels
       if (parsed?.HotelOptions) {
         for (let hotel of parsed.HotelOptions) {
-          let img = await getPlaceImage(hotel.HotelName + " hotel");
-          if (!img || img.includes("No+Image+Found") || img.includes("Error+Fetching+Image")) {
-            img = await getWikipediaImage(hotel.HotelName);
+          try {
+            let img = await getPlaceImage(hotel.HotelName + " hotel");
+            if (!img || img.includes("No+Image+Found") || img.includes("Error+Fetching+Image")) {
+              img = await getWikipediaImage(hotel.HotelName);
+            }
+            hotel.HotelImageUrl = img;
+          } catch (e) {
+            console.log("Error fetching hotel image", e);
           }
-          hotel.HotelImageUrl = img;
         }
       }
 
+      // 5. Process Itinerary
       if (parsed?.Itinerary) {
         for (let day of parsed.Itinerary) {
+          // KEY FIX: AI sometimes calls it "Activities" instead of "Plan"
+          day.Plan = day.Plan || day.Activities || []; 
+          
           for (let place of day.Plan) {
-            let img = await getPlaceImage(place.PlaceName + " tourist attraction");
-            if (!img || img.includes("No+Image+Found") || img.includes("Error+Fetching+Image")) {
-              img = await getWikipediaImage(place.PlaceName);
+            try {
+              let img = await getPlaceImage(place.PlaceName + " tourist attraction");
+              if (!img || img.includes("No+Image+Found") || img.includes("Error+Fetching+Image")) {
+                img = await getWikipediaImage(place.PlaceName);
+              }
+              place.PlaceImageUrl = img;
+            } catch (e) {
+              console.log("Error fetching place image", e);
             }
-            place.PlaceImageUrl = img;
           }
         }
       }
 
+      // 6. Build Final Data
       const finalTripData = {
         userSelection: formData,
         tripData: {
-          ...parsed.travelPlan || parsed || {},
+          ...parsed.travelPlan, // Uses the normalized key
+          HotelOptions: parsed.HotelOptions,
+          Itinerary: parsed.Itinerary,
           coords,
           image,
         },
