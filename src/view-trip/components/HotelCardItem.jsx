@@ -7,8 +7,7 @@ function HotelCardItem({ item, index = 0 }) {
   const name =
     item?.HotelName ||
     item?.hotelName ||
-    item?.["Hotel Name"] ||
-    item?.["hotel name"] ||
+    item?.hotel_name ||
     item?.name ||
     "Unnamed Hotel";
 
@@ -17,17 +16,8 @@ function HotelCardItem({ item, index = 0 }) {
     item?.HotelAddress ||
     item?.hotelAddress ||
     item?.["Hotel address"] ||
-    item?.["hotel address"] ||
     item?.address ||
     "";
-
-  // Normalize image
-  const image =
-    item?.HotelImageUrl ||
-    item?.hotelImageUrl ||
-    item?.["hotel image url"] ||
-    item?.image ||
-    "/hotel-placeholder.jpg"; // static fallback
 
   // Normalize rating
   const rating =
@@ -36,7 +26,21 @@ function HotelCardItem({ item, index = 0 }) {
     item?.hotelRating ||
     "--";
 
-  // Normalize coordinates
+  // UNIVERSAL IMAGE FIX (MAIN ISSUE)
+  const image =
+    item?.hotelImageUrl ||
+    item?.HotelImageUrl ||
+    item?.HotelImage ||
+    item?.hotel_image ||
+    item?.["hotel image url"] ||
+    item?.["hotel_image_url"] ||
+    item?.image ||
+    item?.imageUrl ||
+    item?.photo ||
+    item?.photoUrl ||
+    "/road-trip-vacation.jpg"; // fallback
+
+  // Coordinates for maps
   const coords =
     item?.geoCoordinates ||
     item?.GeoCoordinates ||
@@ -57,6 +61,7 @@ function HotelCardItem({ item, index = 0 }) {
 
   return (
     <div className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition border overflow-hidden">
+      {/* IMAGE */}
       <div className="relative">
         <img
           src={image}
