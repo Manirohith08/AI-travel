@@ -1,27 +1,32 @@
 import axios from "axios";
-import { GOOGLE_PLACES_API_KEY } from "./config";
+import { getWikipediaImage } from "./getWikipediaImage";
 
+// Get place image (Unsplash → Wikipedia fallback)
 export async function getPlaceImage(query) {
   try {
-    const searchURL = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(
+    // UNSPLASH (NO KEY NEEDED)
+    const unsplashUrl = `https://source.unsplash.com/1200x800/?${encodeURIComponent(
       query
-    )}&key=${GOOGLE_PLACES_API_KEY}`;
+    )}`;
 
-    const search = await axios.get(searchURL);
-    const place = search.data.results?.[0];
+    // Check if URL returns an actual image
+    const imgCheck = await axios.get(unsplashUrl, { timeout: 5000 });
 
-    if (place?.photos?.length > 0) {
-      const ref = place.photos[0].photo_reference;
-      return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=1200&photo_reference=${ref}&key=${GOOGLE_PLACES_API_KEY}`;
+    if (imgCheck?.request?.responseURL) {
+      return imgCheck.request.responseURL;
     }
-
-    // Unsplash fallback
-    return `https://source.unsplash.com/600x400/?${encodeURIComponent(query)}`;
   } catch (err) {
-    console.log("Image fetch failed → applying fallback");
+    console.log("Unsplash fetch failed, using Wikipedia fallback.");
   }
 
-  return `https://source.unsplash.com/600x400/?travel,${encodeURIComponent(
-    query
-  )}`;
+  // WIKIPEDIA fallback
+  try {
+    const wikiImg = await getWikipediaImage(query);
+    if (wikiImg) return wikiImg;
+  } catch (err) {
+    console.log("Wikipedia fetch failed.");
+  }
+
+  // FINAL fallback
+  return "/road-trip-vacation.jpg";
 }
