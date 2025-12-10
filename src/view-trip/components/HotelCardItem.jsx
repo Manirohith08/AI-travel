@@ -124,3 +124,4 @@ function HotelCardItem({ item, index = 0 }) {
 }
 
 export default HotelCardItem;
+
