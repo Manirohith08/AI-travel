@@ -1,65 +1,56 @@
-import React, { useEffect, useState } from "react";
-import { getPlaceImage } from "@/api/getPlaceImage";
+import React from "react";
 
 function PlaceCardItem({ place }) {
   const name =
-    place.PlaceName ||
-    place.placeName ||
-    place.name ||
-    "Unknown Place";
+    place?.PlaceName || place?.placeName || place?.name || "Unknown Place";
+
+  const image =
+    place?.PlaceImageUrl || place?.placeImageUrl || "/road-trip-vacation.jpg";
 
   const details =
-    place.PlaceDetails ||
-    place.placeDetails ||
-    place.details ||
-    "";
+    place?.PlaceDetails || place?.placeDetails || place?.details || "";
 
-  const rating = place.rating || place.Rating || "--";
+  const rating = place?.rating || place?.Rating || "--";
 
   const coords =
-    place.GeoCoordinates ||
-    place.Geo_Coordinates ||
-    place.geo_coordinates ||
+    place?.GeoCoordinates ||
+    place?.geoCoordinates ||
+    place?.geo_coordinates ||
     {};
 
   const lat = coords.latitude;
   const lng = coords.longitude;
 
-  const mapsUrl = lat && lng
-    ? `https://www.google.com/maps?q=${lat},${lng}`
-    : `https://www.google.com/maps/search/${encodeURIComponent(name)}`;
-
-  const [image, setImage] = useState(place.PlaceImageUrl || "");
-
-  useEffect(() => {
-    if (!image) fetchImage();
-  }, []);
-
-  const fetchImage = async () => {
-    const img = await getPlaceImage(name + " tourist attraction");
-    setImage(img);
-  };
+  const mapsUrl =
+    lat && lng
+      ? `https://www.google.com/maps?q=${lat},${lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+          name
+        )}`;
 
   return (
-    <div className="rounded-3xl bg-white shadow-xl border border-gray-200 overflow-hidden">
-      <img src={image} alt={name} className="w-full h-36 object-cover" />
+    <div className="rounded-3xl bg-white border shadow hover:shadow-lg transition p-4">
+      <img
+        src={image}
+        className="rounded-xl w-full h-40 object-cover mb-3"
+        alt={name}
+      />
 
-      <div className="p-4">
-        <h3 className="font-semibold text-lg">{name}</h3>
-        <p className="text-gray-600 text-sm line-clamp-2">{details}</p>
+      <h3 className="font-bold text-lg">{name}</h3>
+      <p className="text-gray-600 text-sm mt-1 line-clamp-3">{details}</p>
 
-        <div className="flex items-center gap-1 text-yellow-500 mt-2">
-          ⭐ <span className="text-black">{rating}</span>
-        </div>
-
-        <a
-          href={mapsUrl}
-          target="_blank"
-          className="mt-3 block bg-purple-600 text-white py-2 rounded-lg text-center"
-        >
-          Open in Maps
-        </a>
+      <div className="mt-2 text-yellow-500 text-sm">
+        ⭐ <span className="text-black">{rating}</span>
       </div>
+
+      <a
+        target="_blank"
+        rel="noopener noreferrer"
+        href={mapsUrl}
+        className="mt-3 block bg-purple-600 text-white text-center rounded-lg py-2 hover:bg-purple-700 transition"
+      >
+        Open in Maps
+      </a>
     </div>
   );
 }
