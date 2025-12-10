@@ -3,7 +3,7 @@ import React from "react";
 const HOTEL_EMOJIS = ["🏨", "🏩", "🏕️", "🏛️", "🛎️", "🏚️", "⛺"];
 
 function HotelCardItem({ item, index = 0 }) {
-  // 🎯 Normalize hotel name
+  // Normalize hotel name
   const name =
     item?.HotelName ||
     item?.hotelName ||
@@ -11,38 +11,33 @@ function HotelCardItem({ item, index = 0 }) {
     item?.name ||
     "Unnamed Hotel";
 
-  // 🎯 Normalize address
+  // Normalize address
   const address =
     item?.HotelAddress ||
     item?.hotelAddress ||
-    item?.Hotel_address ||
-    item?.Hotel_address ||
-    item?.address ||
     item?.["Hotel address"] ||
+    item?.address ||
     "";
 
-  // 🎯 Normalize rating
+  // Normalize rating
   const rating =
     item?.rating ||
     item?.Rating ||
     item?.hotelRating ||
-    item?.reviews ||
     "--";
 
-  // 🎯 Normalize image
+  // Use AI image, or fallback placeholder
   const image =
     item?.hotelImageUrl ||
     item?.HotelImageUrl ||
     item?.["hotel image url"] ||
-    item?.image ||
     "/road-trip-vacation.jpg";
 
-  // 🎯 Normalize coordinates
+  // Coordinates for maps
   const coords =
     item?.geoCoordinates ||
     item?.GeoCoordinates ||
     item?.["geo coordinates"] ||
-    item?.geo_coordinates ||
     {};
 
   const lat = coords.latitude;
@@ -59,7 +54,7 @@ function HotelCardItem({ item, index = 0 }) {
 
   return (
     <div className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition border overflow-hidden">
-      {/* IMAGE */}
+      {/* IMAGE (NO FETCH) */}
       <div className="relative">
         <img
           src={image}
@@ -72,12 +67,12 @@ function HotelCardItem({ item, index = 0 }) {
         </span>
       </div>
 
-      {/* CONTENT */}
+      {/* TEXT CONTENT */}
       <div className="p-5 space-y-2">
         <h3 className="font-bold text-lg">{name}</h3>
 
         <p className="text-gray-600 text-sm flex items-center gap-1">
-          📍 {address || "Address not provided"}
+          📍 {address || "Address not available"}
         </p>
 
         <p className="text-yellow-500 text-sm">
