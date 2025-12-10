@@ -103,199 +103,202 @@ function CreateTrip() {
 
   // ---------------- MAIN GENERATE TRIP ----------------
 
-  const OnGenerateTrip = async () => {
-    const user = localStorage.getItem("user");
-    if (!user) {
-      setOpenDialog(true);
-      return;
+ const OnGenerateTrip = async () => {
+  const user = localStorage.getItem("user");
+  if (!user) {
+    setOpenDialog(true);
+    return;
+  }
+
+  if (
+    formData?.totalDays > 5 ||
+    !formData?.location ||
+    !formData?.budget ||
+    !formData?.traveler
+  ) {
+    toast("Please fill all details!");
+    return;
+  }
+
+  toast("Generating your trip...");
+  setLoading(true);
+
+  try {
+    const coords = await getLocationCoords(formData?.location);
+    const image = await getPlaceImage(formData?.location);
+
+    const FINAL_PROMPT = AI_PROMPT.replace("{location}", formData?.location)
+      .replace("{totalDays}", formData?.totalDays)
+      .replace("{traveler}", formData?.traveler)
+      .replace("{budget}", formData?.budget);
+
+    const result = await chatSession.sendMessage(FINAL_PROMPT);
+    const responseText = await result.response.text();
+    console.log("AI Raw Response:", responseText);
+
+    const parsed = extractValidJSON(responseText);
+    console.log("Parsed JSON:", parsed);
+
+    // ---------- NORMALISE TOP-LEVEL KEYS ----------
+    if (parsed) {
+      // Hotels
+      const hotels =
+        parsed.HotelOptions ||
+        parsed.hotelOptions ||
+        parsed.hotels ||
+        parsed.hotels_options || // from your AI response
+        [];
+
+      // Itinerary (array of days)
+      const itinerary =
+        parsed.Itinerary ||
+        parsed.itinerary || // from your AI response
+        [];
+
+      // ✅ set BOTH PascalCase and camelCase
+      parsed.HotelOptions = hotels;
+      parsed.hotelOptions = hotels;
+      parsed.Itinerary = itinerary;
+      parsed.itinerary = itinerary;
+
+      // Main card info for ViewTrip header
+      parsed.travelPlan =
+        parsed.travelPlan ||
+        parsed.TravelPlanDetails || {
+          location: parsed.location || formData.location,
+          durationDays:
+            parsed.durationDays ||
+            parsed.duration_days ||
+            parsed.days || // from AI response
+            formData.totalDays,
+          numberOfPeople:
+            parsed.numberOfPeople ||
+            parsed.number_of_people ||
+            parsed.travelers || // from AI response
+            formData.traveler,
+          budget: parsed.budget || formData.budget,
+        };
     }
 
+    // ---------- VALIDATION ----------
     if (
-      formData?.totalDays > 5 ||
-      !formData?.location ||
-      !formData?.budget ||
-      !formData?.traveler
+      !parsed ||
+      (!parsed.travelPlan &&
+        (!parsed.HotelOptions || parsed.HotelOptions.length === 0) &&
+        (!parsed.Itinerary || parsed.Itinerary.length === 0))
     ) {
-      toast("Please fill all details!");
+      console.error("Validation Failed. Parsed Object:", parsed);
+      toast.error("Failed to parse AI response. Try again.");
+      setLoading(false);
       return;
     }
 
-    toast("Generating your trip...");
-    setLoading(true);
+    // ---------- PROCESS HOTELS ----------
+    if (parsed?.HotelOptions && parsed.HotelOptions.length > 0) {
+      for (let hotel of parsed.HotelOptions) {
+        // Normalise hotel field names
+        hotel.HotelAddress =
+          hotel.HotelAddress || hotel.Hotel_address || hotel.address || "";
+        hotel.Price_per_night =
+          hotel.Price_per_night || hotel.price_per_night || hotel.price || "";
+        hotel.GeoCoordinates =
+          hotel.GeoCoordinates || hotel.geo_coordinates || hotel.coords || {};
+        hotel.Rating = hotel.Rating || hotel.rating;
+        hotel.Description =
+          hotel.Description || hotel.descriptions || hotel.desc || "";
 
-    try {
-      const coords = await getLocationCoords(formData?.location);
-      const image = await getPlaceImage(formData?.location);
-
-      const FINAL_PROMPT = AI_PROMPT.replace(
-        "{location}",
-        formData?.location
-      )
-        .replace("{totalDays}", formData?.totalDays)
-        .replace("{traveler}", formData?.traveler)
-        .replace("{budget}", formData?.budget);
-
-      const result = await chatSession.sendMessage(FINAL_PROMPT);
-      const responseText = await result.response.text();
-      console.log("AI Raw Response:", responseText);
-
-      const parsed = extractValidJSON(responseText);
-      console.log("Parsed JSON:", parsed);
-
-      // ---------- NORMALISE TOP-LEVEL KEYS ----------
-      if (parsed) {
-        // Hotels
-        const hotels =
-          parsed.HotelOptions ||
-          parsed.hotelOptions ||
-          parsed.hotels ||
-          parsed.hotels_options || // from your AI response
-          [];
-
-        // Itinerary (array of days)
-        const itinerary =
-          parsed.Itinerary ||
-          parsed.itinerary || // from your AI response
-          [];
-
-        parsed.HotelOptions = hotels;
-        parsed.hotelOptions = hotels;
-        parsed.Itinerary = itinerary;
-        parsed.itinerary = itinerary;
-
-        // Main card info for ViewTrip header
-        parsed.travelPlan =
-          parsed.travelPlan ||
-          parsed.TravelPlanDetails || {
-            location: parsed.location || formData.location,
-            durationDays:
-              parsed.durationDays ||
-              parsed.duration_days ||
-              parsed.days || // from AI response
-              formData.totalDays,
-            numberOfPeople:
-              parsed.numberOfPeople ||
-              parsed.number_of_people ||
-              parsed.travelers || // from AI response
-              formData.traveler,
-            budget: parsed.budget || formData.budget,
-          };
+        try {
+          let img = await getPlaceImage(hotel.HotelName + " hotel");
+          if (
+            !img ||
+            img.includes("No+Image+Found") ||
+            img.includes("Error+Fetching+Image")
+          ) {
+            img = await getWikipediaImage(hotel.HotelName);
+          }
+          hotel.HotelImageUrl =
+            hotel.HotelImageUrl || hotel.hotel_image_url || img;
+        } catch (e) {
+          console.log("Error fetching hotel image", e);
+        }
       }
+    }
 
-      // ---------- VALIDATION ----------
-      if (
-        !parsed ||
-        (!parsed.travelPlan &&
-          (!parsed.HotelOptions || parsed.HotelOptions.length === 0) &&
-          (!parsed.Itinerary || parsed.Itinerary.length === 0))
-      ) {
-        console.error("Validation Failed. Parsed Object:", parsed);
-        toast.error("Failed to parse AI response. Try again.");
-        setLoading(false);
-        return;
-      }
+    // ---------- PROCESS ITINERARY ----------
+    if (parsed?.Itinerary && parsed.Itinerary.length > 0) {
+      for (let day of parsed.Itinerary) {
+        // AI may use `plan` or `Plan` or `Activities`
+        day.Plan = day.Plan || day.plan || day.Activities || [];
 
-      // ---------- PROCESS HOTELS ----------
-      if (parsed?.HotelOptions && parsed.HotelOptions.length > 0) {
-        for (let hotel of parsed.HotelOptions) {
-          // Normalise hotel field names
-          hotel.HotelAddress =
-            hotel.HotelAddress || hotel.Hotel_address || hotel.address || "";
-          hotel.Price_per_night =
-            hotel.Price_per_night || hotel.price_per_night || hotel.price || "";
-          hotel.GeoCoordinates =
-            hotel.GeoCoordinates || hotel.geo_coordinates || hotel.coords || {};
-          hotel.Rating = hotel.Rating || hotel.rating;
-          hotel.Description =
-            hotel.Description || hotel.descriptions || hotel.desc || "";
+        for (let place of day.Plan) {
+          // Normalise place fields
+          place.PlaceName = place.PlaceName || place.placeName || "";
+          place.PlaceDetails =
+            place.PlaceDetails || place.Place_Details || place.details || "";
+          place.GeoCoordinates =
+            place.GeoCoordinates ||
+            place.Geo_Coordinates ||
+            place.geo_coordinates ||
+            {};
+          place.TicketPricing =
+            place.TicketPricing ||
+            place.ticket_Pricing ||
+            place.price ||
+            "";
+          place.Rating = place.Rating || place.rating;
+          place.TimeNeeded =
+            place.TimeNeeded || place.Time_travel || place.duration || "";
+          place.BestTimeToVisit =
+            place.BestTimeToVisit ||
+            place.best_time_to_visit ||
+            place.bestTime ||
+            "";
 
           try {
-            let img = await getPlaceImage(hotel.HotelName + " hotel");
+            let img = await getPlaceImage(
+              (place.PlaceName || "") + " tourist attraction"
+            );
             if (
               !img ||
               img.includes("No+Image+Found") ||
               img.includes("Error+Fetching+Image")
             ) {
-              img = await getWikipediaImage(hotel.HotelName);
+              img = await getWikipediaImage(place.PlaceName || "");
             }
-            hotel.HotelImageUrl =
-              hotel.HotelImageUrl || hotel.hotel_image_url || img;
+            place.PlaceImageUrl =
+              place.PlaceImageUrl || place.Place_Image_Url || img;
           } catch (e) {
-            console.log("Error fetching hotel image", e);
+            console.log("Error fetching place image", e);
           }
         }
       }
-
-      // ---------- PROCESS ITINERARY ----------
-      if (parsed?.Itinerary && parsed.Itinerary.length > 0) {
-        for (let day of parsed.Itinerary) {
-          // AI may use `plan` or `Plan` or `Activities`
-          day.Plan = day.Plan || day.plan || day.Activities || [];
-
-          for (let place of day.Plan) {
-            // Normalise place fields
-            place.PlaceName = place.PlaceName || place.placeName || "";
-            place.PlaceDetails =
-              place.PlaceDetails || place.Place_Details || place.details || "";
-            place.GeoCoordinates =
-              place.GeoCoordinates ||
-              place.Geo_Coordinates ||
-              place.geo_coordinates ||
-              {};
-            place.TicketPricing =
-              place.TicketPricing ||
-              place.ticket_Pricing ||
-              place.price ||
-              "";
-            place.Rating = place.Rating || place.rating;
-            place.TimeNeeded =
-              place.TimeNeeded || place.Time_travel || place.duration || "";
-            place.BestTimeToVisit =
-              place.BestTimeToVisit ||
-              place.best_time_to_visit ||
-              place.bestTime ||
-              "";
-
-            try {
-              let img = await getPlaceImage(
-                (place.PlaceName || "") + " tourist attraction"
-              );
-              if (
-                !img ||
-                img.includes("No+Image+Found") ||
-                img.includes("Error+Fetching+Image")
-              ) {
-                img = await getWikipediaImage(place.PlaceName || "");
-              }
-              place.PlaceImageUrl =
-                place.PlaceImageUrl || place.Place_Image_Url || img;
-            } catch (e) {
-              console.log("Error fetching place image", e);
-            }
-          }
-        }
-      }
-
-      // ---------- FINAL TRIP DATA ----------
-      const finalTripData = {
-        userSelection: formData,
-        tripData: {
-          ...parsed.travelPlan,
-          HotelOptions: parsed.HotelOptions,
-          Itinerary: parsed.Itinerary,
-          coords,
-          image,
-        },
-      };
-
-      setLoading(false);
-      navigate("/view-trip", { state: finalTripData });
-    } catch (error) {
-      console.error("Trip generation failed:", error);
-      toast("Something went wrong. Try again.");
-      setLoading(false);
     }
-  };
+
+    // ---------- FINAL TRIP DATA ----------
+    const finalTripData = {
+      userSelection: formData,
+      tripData: {
+        ...parsed.travelPlan,
+        // ✅ expose both naming styles to keep all components happy
+        HotelOptions: parsed.HotelOptions,
+        hotelOptions: parsed.HotelOptions,
+
+        Itinerary: parsed.Itinerary,
+        itinerary: parsed.Itinerary,
+
+        coords,
+        image,
+      },
+    };
+
+    setLoading(false);
+    navigate("/view-trip", { state: finalTripData });
+  } catch (error) {
+    console.error("Trip generation failed:", error);
+    toast("Something went wrong. Try again.");
+    setLoading(false);
+  }
+};
 
   // ---------------- LOCATION AUTOCOMPLETE ----------------
 
