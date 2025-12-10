@@ -1,17 +1,33 @@
-// Hotels.jsx
 import React from "react";
 import HotelCardItem from "./HotelCardItem";
 
 function Hotels({ trip }) {
-  // Accept all possible keys from AI or Firestore
+  if (!trip) {
+    return (
+      <div className="my-6">
+        <h2 className="font-semibold text-xl">Hotel Recommendations</h2>
+        <p className="text-gray-500">Trip data not found.</p>
+      </div>
+    );
+  }
+
+  // 🔥 UNIVERSAL HOTEL NORMALIZER — reads EVERY possible key
   const hotels =
+    trip?.Hotels ||
+    trip?.Hotel ||
+    trip?.hotels ||
+    trip?.hotel ||
     trip?.hotelOptions ||
-    trip?.HotelOptions ||
+    trip?.hotelRecommendations ||
+    trip?.tripData?.Hotels ||
+    trip?.tripData?.Hotel ||
+    trip?.tripData?.hotels ||
+    trip?.tripData?.hotel ||
     trip?.tripData?.hotelOptions ||
-    trip?.tripData?.HotelOptions ||
+    trip?.tripData?.hotelRecommendations ||
     [];
 
-  if (!hotels.length) {
+  if (!Array.isArray(hotels) || hotels.length === 0) {
     return (
       <div className="my-6">
         <h2 className="font-semibold text-xl">Hotel Recommendations</h2>
