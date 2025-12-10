@@ -1,95 +1,97 @@
-import React, { useState } from "react";
+import React from "react";
 
 const HOTEL_EMOJIS = ["🏨", "🏩", "🏕️", "🏛️", "🛎️", "🏚️", "⛺"];
 
 function HotelCardItem({ item, index = 0 }) {
-  // Normalize hotel fields (AI output)
+  // 🎯 Normalize hotel name
   const name =
-    item?.hotelName ||
     item?.HotelName ||
+    item?.hotelName ||
+    item?.hotel_name ||
     item?.name ||
     "Unnamed Hotel";
 
+  // 🎯 Normalize address
   const address =
-    item?.hotelAddress ||
     item?.HotelAddress ||
+    item?.hotelAddress ||
+    item?.Hotel_address ||
+    item?.Hotel_address ||
     item?.address ||
-    "Address not available";
+    item?.["Hotel address"] ||
+    "";
 
-  const rating = item?.rating || item?.Rating || "--";
+  // 🎯 Normalize rating
+  const rating =
+    item?.rating ||
+    item?.Rating ||
+    item?.hotelRating ||
+    item?.reviews ||
+    "--";
 
-  const price =
-    item?.price ||
-    item?.Price_per_night ||
-    null;
+  // 🎯 Normalize image
+  const image =
+    item?.hotelImageUrl ||
+    item?.HotelImageUrl ||
+    item?.["hotel image url"] ||
+    item?.image ||
+    "/road-trip-vacation.jpg";
 
+  // 🎯 Normalize coordinates
   const coords =
     item?.geoCoordinates ||
     item?.GeoCoordinates ||
+    item?.["geo coordinates"] ||
+    item?.geo_coordinates ||
     {};
 
-  const lat = coords?.latitude;
-  const lng = coords?.longitude;
+  const lat = coords.latitude;
+  const lng = coords.longitude;
 
   const mapsUrl =
     lat && lng
       ? `https://www.google.com/maps?q=${lat},${lng}`
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-          `${name}, ${address}`
+          name + " " + address
         )}`;
-
-  // ⭐ Use ONLY AI image → fallback → no Google calls
-  const [photoUrl] = useState(
-    item?.hotelImageUrl ||
-      item?.HotelImageUrl ||
-      "/road-trip-vacation.jpg"
-  );
 
   const emoji = HOTEL_EMOJIS[index % HOTEL_EMOJIS.length];
 
   return (
-    <div className="max-w-sm w-full mx-auto">
-      <div className="group rounded-3xl bg-white shadow-xl border border-gray-200 overflow-hidden transition-all hover:shadow-2xl hover:-translate-y-1">
+    <div className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition border overflow-hidden">
+      {/* IMAGE */}
+      <div className="relative">
+        <img
+          src={image}
+          alt={name}
+          className="w-full h-48 object-cover"
+        />
 
-        {/* IMAGE */}
-        <div className="relative">
-          <img
-            src={photoUrl}
-            alt={name}
-            className="w-full h-44 object-cover"
-          />
-          <span className="absolute top-3 left-3 bg-white bg-opacity-80 rounded-full px-2 py-1 shadow text-2xl">
-            {emoji}
-          </span>
-        </div>
+        <span className="absolute top-3 left-3 bg-white bg-opacity-80 rounded-full px-2 py-1 shadow text-2xl">
+          {emoji}
+        </span>
+      </div>
 
-        {/* CONTENT */}
-        <div className="p-5 pb-4 flex flex-col gap-2">
-          <div className="font-bold text-lg text-gray-900">{name}</div>
+      {/* CONTENT */}
+      <div className="p-5 space-y-2">
+        <h3 className="font-bold text-lg">{name}</h3>
 
-          <div className="flex items-center text-xs text-gray-600 gap-1">
-            📍 <span className="truncate">{address}</span>
-          </div>
+        <p className="text-gray-600 text-sm flex items-center gap-1">
+          📍 {address || "Address not provided"}
+        </p>
 
-          {price && (
-            <div className="flex items-center text-sm text-green-600 gap-1">
-              💰 <span>{price}</span>
-            </div>
-          )}
+        <p className="text-yellow-500 text-sm">
+          ⭐ <span className="text-black">{rating}</span>
+        </p>
 
-          <div className="flex items-center text-sm text-yellow-500 gap-1">
-            ⭐ <span className="text-black">{rating}</span>
-          </div>
-
-          <a
-            href={mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-3 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm shadow-md hover:bg-purple-700 transition text-center"
-          >
-            Open in Maps
-          </a>
-        </div>
+        <a
+          href={mapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block mt-3 bg-purple-600 text-white text-center py-2 rounded-lg hover:bg-purple-700 transition"
+        >
+          Open in Maps
+        </a>
       </div>
     </div>
   );
