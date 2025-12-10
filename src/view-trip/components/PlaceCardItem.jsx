@@ -2,20 +2,37 @@ import React from "react";
 
 function PlaceCardItem({ place }) {
   const name =
-    place?.PlaceName || place?.placeName || place?.name || "Unknown Place";
+    place?.PlaceName ||
+    place?.placeName ||
+    place?.["Place Name"] ||
+    place?.["place name"] ||
+    place?.name ||
+    "Unknown Place";
 
   const image =
-    place?.PlaceImageUrl || place?.placeImageUrl || "/road-trip-vacation.jpg";
+    place?.PlaceImageUrl ||
+    place?.placeImageUrl ||
+    place?.["Place Image Url"] ||
+    place?.["place image url"] ||
+    "/place-placeholder.jpg"; // static fallback
 
   const details =
-    place?.PlaceDetails || place?.placeDetails || place?.details || "";
+    place?.PlaceDetails ||
+    place?.placeDetails ||
+    place?.["Place Details"] ||
+    place?.details ||
+    "";
 
-  const rating = place?.rating || place?.Rating || "--";
+  const rating =
+    place?.rating ||
+    place?.Rating ||
+    "--";
 
   const coords =
     place?.GeoCoordinates ||
     place?.geoCoordinates ||
-    place?.geo_coordinates ||
+    place?.["Geo Coordinates"] ||
+    place?.["geo coordinates"] ||
     {};
 
   const lat = coords.latitude;
