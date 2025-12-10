@@ -88,113 +88,160 @@ function CreateTrip() {
   };
 
  const OnGenerateTrip = async () => {
-    const user = localStorage.getItem("user");
-    if (!user) {
-      setOpenDialog(true);
-      return;
+  const user = localStorage.getItem("user");
+  if (!user) {
+    setOpenDialog(true);
+    return;
+  }
+
+  if (
+    formData?.totalDays > 5 ||
+    !formData?.location ||
+    !formData?.budget ||
+    !formData?.traveler
+  ) {
+    toast("Please fill all details!");
+    return;
+  }
+
+  toast("Generating your trip...");
+  setLoading(true);
+
+  try {
+    const coords = await getLocationCoords(formData?.location);
+    const image = await getPlaceImage(formData?.location);
+
+    const FINAL_PROMPT = AI_PROMPT
+      .replace("{location}", formData?.location)
+      .replace("{totalDays}", formData?.totalDays)
+      .replace("{traveler}", formData?.traveler)
+      .replace("{budget}", formData?.budget);
+
+    const result = await chatSession.sendMessage(FINAL_PROMPT);
+    const responseText = await result.response.text();
+    console.log("AI Raw Response:", responseText);
+
+    const parsed = extractValidJSON(responseText);
+    console.log("Parsed JSON:", parsed);
+
+    // 🔧 1) NORMALIZE KEYS FROM YOUR SAMPLE JSON
+    //    (handles: hotels_options, itinerary, duration_days, number_of_people)
+    if (parsed) {
+      // hotels
+      const hotels =
+        parsed.HotelOptions ||          // already correct
+        parsed.hotelOptions ||
+        parsed.hotels ||
+        parsed.hotels_options ||        // 👉 from your sample JSON
+        [];
+
+      // itinerary
+      const itinerary =
+        parsed.Itinerary ||
+        parsed.itinerary ||             // 👉 from your sample JSON
+        parsed.daily_plan ||
+        [];
+
+      // store in both PascalCase + camelCase so other components are happy
+      parsed.HotelOptions = hotels;
+      parsed.hotelOptions = hotels;
+      parsed.Itinerary = itinerary;
+      parsed.itinerary = itinerary;
+
+      // main trip info (top card)
+      parsed.travelPlan =
+        parsed.travelPlan ||
+        parsed.TravelPlanDetails || {
+          location: parsed.location || formData.location,
+          durationDays:
+            parsed.durationDays ||
+            parsed.duration_days ||      // 👉 from your sample JSON
+            formData.totalDays,
+          numberOfPeople:
+            parsed.numberOfPeople ||
+            parsed.number_of_people ||   // 👉 from your sample JSON
+            formData.traveler,
+          budget: parsed.budget || formData.budget,
+        };
     }
 
+    // 🔧 2) UPDATED VALIDATION
     if (
-      formData?.totalDays > 5 ||
-      !formData?.location ||
-      !formData?.budget ||
-      !formData?.traveler
+      !parsed ||
+      (!parsed.travelPlan &&
+        (!parsed.HotelOptions || parsed.HotelOptions.length === 0) &&
+        (!parsed.Itinerary || parsed.Itinerary.length === 0))
     ) {
-      toast("Please fill all details!");
+      console.error("Validation Failed. Parsed Object:", parsed);
+      toast.error("Failed to parse AI response. Try again.");
+      setLoading(false);
       return;
     }
 
-    toast("Generating your trip...");
-    setLoading(true);
-
-    try {
-      const coords = await getLocationCoords(formData?.location);
-      const image = await getPlaceImage(formData?.location);
-
-      const FINAL_PROMPT = AI_PROMPT
-        .replace("{location}", formData?.location)
-        .replace("{totalDays}", formData?.totalDays)
-        .replace("{traveler}", formData?.traveler)
-        .replace("{budget}", formData?.budget);
-
-      const result = await chatSession.sendMessage(FINAL_PROMPT);
-      const responseText = await result.response.text();
-      console.log("AI Raw Response:", responseText);
-
-      // 1. Clean the response using your helper function
-      const parsed = extractValidJSON(responseText);
-
-      // 2. KEY FIX: Normalize the data if AI uses different names
-      // (This fixes the error where "hotels" was undefined)
-      if (parsed) {
-        parsed.HotelOptions = parsed.HotelOptions || parsed.hotels || [];
-        parsed.Itinerary = parsed.Itinerary || parsed.itinerary || [];
-        parsed.travelPlan = parsed.travelPlan || parsed.TravelPlanDetails || {};
-      }
-
-      // 3. Updated Validation Check (checks for fallback keys too)
-      if (!parsed || (!parsed.travelPlan && !parsed.HotelOptions && !parsed.hotels)) {
-        console.error("Validation Failed. Parsed Object:", parsed);
-        toast.error("Failed to parse AI response. Try again.");
-        setLoading(false);
-        return;
-      }
-
-      // 4. Process Hotels
-      if (parsed?.HotelOptions) {
-        for (let hotel of parsed.HotelOptions) {
-          try {
-            let img = await getPlaceImage(hotel.HotelName + " hotel");
-            if (!img || img.includes("No+Image+Found") || img.includes("Error+Fetching+Image")) {
-              img = await getWikipediaImage(hotel.HotelName);
-            }
-            hotel.HotelImageUrl = img;
-          } catch (e) {
-            console.log("Error fetching hotel image", e);
+    // 🔧 3) PROCESS HOTELS (now using normalized parsed.HotelOptions)
+    if (parsed?.HotelOptions && parsed.HotelOptions.length > 0) {
+      for (let hotel of parsed.HotelOptions) {
+        try {
+          let img = await getPlaceImage(hotel.HotelName + " hotel");
+          if (
+            !img ||
+            img.includes("No+Image+Found") ||
+            img.includes("Error+Fetching+Image")
+          ) {
+            img = await getWikipediaImage(hotel.HotelName);
           }
+          hotel.HotelImageUrl = img;
+        } catch (e) {
+          console.log("Error fetching hotel image", e);
         }
       }
-
-      // 5. Process Itinerary
-      if (parsed?.Itinerary) {
-        for (let day of parsed.Itinerary) {
-          // KEY FIX: AI sometimes calls it "Activities" instead of "Plan"
-          day.Plan = day.Plan || day.Activities || []; 
-          
-          for (let place of day.Plan) {
-            try {
-              let img = await getPlaceImage(place.PlaceName + " tourist attraction");
-              if (!img || img.includes("No+Image+Found") || img.includes("Error+Fetching+Image")) {
-                img = await getWikipediaImage(place.PlaceName);
-              }
-              place.PlaceImageUrl = img;
-            } catch (e) {
-              console.log("Error fetching place image", e);
-            }
-          }
-        }
-      }
-
-      // 6. Build Final Data
-      const finalTripData = {
-        userSelection: formData,
-        tripData: {
-          ...parsed.travelPlan, // Uses the normalized key
-          HotelOptions: parsed.HotelOptions,
-          Itinerary: parsed.Itinerary,
-          coords,
-          image,
-        },
-      };
-
-      setLoading(false);
-      navigate("/view-trip", { state: finalTripData });
-    } catch (error) {
-      console.error("Trip generation failed:", error);
-      toast("Something went wrong. Try again.");
-      setLoading(false);
     }
-  };
+
+    // 🔧 4) PROCESS ITINERARY (parsed.Itinerary is now always set)
+    if (parsed?.Itinerary && parsed.Itinerary.length > 0) {
+      for (let day of parsed.Itinerary) {
+        // handle Plan vs Activities
+        day.Plan = day.Plan || day.Activities || [];
+
+        for (let place of day.Plan) {
+          try {
+            let img = await getPlaceImage(place.PlaceName + " tourist attraction");
+            if (
+              !img ||
+              img.includes("No+Image+Found") ||
+              img.includes("Error+Fetching+Image")
+            ) {
+              img = await getWikipediaImage(place.PlaceName);
+            }
+            place.PlaceImageUrl = img;
+          } catch (e) {
+            console.log("Error fetching place image", e);
+          }
+        }
+      }
+    }
+
+    // 🔧 5) FINAL TRIP OBJECT (unchanged, but now has correct data)
+    const finalTripData = {
+      userSelection: formData,
+      tripData: {
+        ...parsed.travelPlan,
+        HotelOptions: parsed.HotelOptions,
+        Itinerary: parsed.Itinerary,
+        coords,
+        image,
+      },
+    };
+
+    setLoading(false);
+    navigate("/view-trip", { state: finalTripData });
+  } catch (error) {
+    console.error("Trip generation failed:", error);
+    toast("Something went wrong. Try again.");
+    setLoading(false);
+  }
+};
+
 
   const loadLocationOptions = async (inputValue) => {
     if (!inputValue || inputValue.length < 3) return [];
