@@ -11,7 +11,7 @@ function Hotels({ trip }) {
     );
   }
 
-  // 🔥 UNIVERSAL HOTEL NORMALIZER — reads EVERY possible key
+  // Universal hotel extractor – supports all formats
   const hotels =
     trip?.Hotels ||
     trip?.Hotel ||
