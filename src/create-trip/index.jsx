@@ -30,31 +30,45 @@ function CreateTrip() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // ---------------- JSON HELPERS ----------------
+
+  // More robust JSON extractor: if parse fails, trims lines from the end until JSON is valid
   const extractValidJSON = (text) => {
     try {
-      // 1. Remove Markdown code blocks (```json and ```)
+      // 1. Remove Markdown code blocks if present
       let cleanText = text.replace(/```json/g, "").replace(/```/g, "");
 
-      // 2. Find the first '{' and the last '}'
+      // 2. Start from the first '{'
       const start = cleanText.indexOf("{");
-      const end = cleanText.lastIndexOf("}");
+      if (start === -1) return null;
+      cleanText = cleanText.substring(start);
 
-      if (start !== -1 && end !== -1) {
-        cleanText = cleanText.substring(start, end + 1);
-
-        // 3. Fix common AI "Double Quote" hallucination (""key" -> "key")
-        // This regex looks for double double-quotes at the start of keys
-        cleanText = cleanText.replace(/""(\w+)"/g, '"$1"');
-
+      // 3. First attempt: parse as-is
+      try {
         return JSON.parse(cleanText);
+      } catch (e1) {
+        console.warn("Initial JSON.parse failed, trying to repair…", e1);
       }
+
+      // 4. Fallback: trim from the end line-by-line until parse works
+      const lines = cleanText.split("\n");
+      while (lines.length > 1) {
+        lines.pop(); // remove last line (likely the broken tail)
+        const attempt = lines.join("\n");
+        try {
+          return JSON.parse(attempt);
+        } catch {
+          // keep trying
+        }
+      }
+
+      console.error("All JSON repair attempts failed");
+      return null;
     } catch (e) {
       console.error("JSON parsing failed:", e);
-      // Optional: Log the text that failed to help debugging
-      console.log("Failed Text:", text); 
+      console.log("Failed Text:", text);
       return null;
     }
-    return null;
   };
 
   const GetUserProfile = (tokenInfo) => {
@@ -87,161 +101,203 @@ function CreateTrip() {
     });
   };
 
- const OnGenerateTrip = async () => {
-  const user = localStorage.getItem("user");
-  if (!user) {
-    setOpenDialog(true);
-    return;
-  }
+  // ---------------- MAIN GENERATE TRIP ----------------
 
-  if (
-    formData?.totalDays > 5 ||
-    !formData?.location ||
-    !formData?.budget ||
-    !formData?.traveler
-  ) {
-    toast("Please fill all details!");
-    return;
-  }
-
-  toast("Generating your trip...");
-  setLoading(true);
-
-  try {
-    const coords = await getLocationCoords(formData?.location);
-    const image = await getPlaceImage(formData?.location);
-
-    const FINAL_PROMPT = AI_PROMPT
-      .replace("{location}", formData?.location)
-      .replace("{totalDays}", formData?.totalDays)
-      .replace("{traveler}", formData?.traveler)
-      .replace("{budget}", formData?.budget);
-
-    const result = await chatSession.sendMessage(FINAL_PROMPT);
-    const responseText = await result.response.text();
-    console.log("AI Raw Response:", responseText);
-
-    const parsed = extractValidJSON(responseText);
-    console.log("Parsed JSON:", parsed);
-
-    // 🔧 1) NORMALIZE KEYS FROM YOUR SAMPLE JSON
-    //    (handles: hotels_options, itinerary, duration_days, number_of_people)
-    if (parsed) {
-      // hotels
-      const hotels =
-        parsed.HotelOptions ||          // already correct
-        parsed.hotelOptions ||
-        parsed.hotels ||
-        parsed.hotels_options ||        // 👉 from your sample JSON
-        [];
-
-      // itinerary
-      const itinerary =
-        parsed.Itinerary ||
-        parsed.itinerary ||             // 👉 from your sample JSON
-        parsed.daily_plan ||
-        [];
-
-      // store in both PascalCase + camelCase so other components are happy
-      parsed.HotelOptions = hotels;
-      parsed.hotelOptions = hotels;
-      parsed.Itinerary = itinerary;
-      parsed.itinerary = itinerary;
-
-      // main trip info (top card)
-      parsed.travelPlan =
-        parsed.travelPlan ||
-        parsed.TravelPlanDetails || {
-          location: parsed.location || formData.location,
-          durationDays:
-            parsed.durationDays ||
-            parsed.duration_days ||      // 👉 from your sample JSON
-            formData.totalDays,
-          numberOfPeople:
-            parsed.numberOfPeople ||
-            parsed.number_of_people ||   // 👉 from your sample JSON
-            formData.traveler,
-          budget: parsed.budget || formData.budget,
-        };
-    }
-
-    // 🔧 2) UPDATED VALIDATION
-    if (
-      !parsed ||
-      (!parsed.travelPlan &&
-        (!parsed.HotelOptions || parsed.HotelOptions.length === 0) &&
-        (!parsed.Itinerary || parsed.Itinerary.length === 0))
-    ) {
-      console.error("Validation Failed. Parsed Object:", parsed);
-      toast.error("Failed to parse AI response. Try again.");
-      setLoading(false);
+  const OnGenerateTrip = async () => {
+    const user = localStorage.getItem("user");
+    if (!user) {
+      setOpenDialog(true);
       return;
     }
 
-    // 🔧 3) PROCESS HOTELS (now using normalized parsed.HotelOptions)
-    if (parsed?.HotelOptions && parsed.HotelOptions.length > 0) {
-      for (let hotel of parsed.HotelOptions) {
-        try {
-          let img = await getPlaceImage(hotel.HotelName + " hotel");
-          if (
-            !img ||
-            img.includes("No+Image+Found") ||
-            img.includes("Error+Fetching+Image")
-          ) {
-            img = await getWikipediaImage(hotel.HotelName);
-          }
-          hotel.HotelImageUrl = img;
-        } catch (e) {
-          console.log("Error fetching hotel image", e);
-        }
-      }
+    if (
+      formData?.totalDays > 5 ||
+      !formData?.location ||
+      !formData?.budget ||
+      !formData?.traveler
+    ) {
+      toast("Please fill all details!");
+      return;
     }
 
-    // 🔧 4) PROCESS ITINERARY (parsed.Itinerary is now always set)
-    if (parsed?.Itinerary && parsed.Itinerary.length > 0) {
-      for (let day of parsed.Itinerary) {
-        // handle Plan vs Activities
-        day.Plan = day.Plan || day.Activities || [];
+    toast("Generating your trip...");
+    setLoading(true);
 
-        for (let place of day.Plan) {
+    try {
+      const coords = await getLocationCoords(formData?.location);
+      const image = await getPlaceImage(formData?.location);
+
+      const FINAL_PROMPT = AI_PROMPT.replace(
+        "{location}",
+        formData?.location
+      )
+        .replace("{totalDays}", formData?.totalDays)
+        .replace("{traveler}", formData?.traveler)
+        .replace("{budget}", formData?.budget);
+
+      const result = await chatSession.sendMessage(FINAL_PROMPT);
+      const responseText = await result.response.text();
+      console.log("AI Raw Response:", responseText);
+
+      const parsed = extractValidJSON(responseText);
+      console.log("Parsed JSON:", parsed);
+
+      // ---------- NORMALISE TOP-LEVEL KEYS ----------
+      if (parsed) {
+        // Hotels
+        const hotels =
+          parsed.HotelOptions ||
+          parsed.hotelOptions ||
+          parsed.hotels ||
+          parsed.hotels_options || // from your AI response
+          [];
+
+        // Itinerary (array of days)
+        const itinerary =
+          parsed.Itinerary ||
+          parsed.itinerary || // from your AI response
+          [];
+
+        parsed.HotelOptions = hotels;
+        parsed.hotelOptions = hotels;
+        parsed.Itinerary = itinerary;
+        parsed.itinerary = itinerary;
+
+        // Main card info for ViewTrip header
+        parsed.travelPlan =
+          parsed.travelPlan ||
+          parsed.TravelPlanDetails || {
+            location: parsed.location || formData.location,
+            durationDays:
+              parsed.durationDays ||
+              parsed.duration_days ||
+              parsed.days || // from AI response
+              formData.totalDays,
+            numberOfPeople:
+              parsed.numberOfPeople ||
+              parsed.number_of_people ||
+              parsed.travelers || // from AI response
+              formData.traveler,
+            budget: parsed.budget || formData.budget,
+          };
+      }
+
+      // ---------- VALIDATION ----------
+      if (
+        !parsed ||
+        (!parsed.travelPlan &&
+          (!parsed.HotelOptions || parsed.HotelOptions.length === 0) &&
+          (!parsed.Itinerary || parsed.Itinerary.length === 0))
+      ) {
+        console.error("Validation Failed. Parsed Object:", parsed);
+        toast.error("Failed to parse AI response. Try again.");
+        setLoading(false);
+        return;
+      }
+
+      // ---------- PROCESS HOTELS ----------
+      if (parsed?.HotelOptions && parsed.HotelOptions.length > 0) {
+        for (let hotel of parsed.HotelOptions) {
+          // Normalise hotel field names
+          hotel.HotelAddress =
+            hotel.HotelAddress || hotel.Hotel_address || hotel.address || "";
+          hotel.Price_per_night =
+            hotel.Price_per_night || hotel.price_per_night || hotel.price || "";
+          hotel.GeoCoordinates =
+            hotel.GeoCoordinates || hotel.geo_coordinates || hotel.coords || {};
+          hotel.Rating = hotel.Rating || hotel.rating;
+          hotel.Description =
+            hotel.Description || hotel.descriptions || hotel.desc || "";
+
           try {
-            let img = await getPlaceImage(place.PlaceName + " tourist attraction");
+            let img = await getPlaceImage(hotel.HotelName + " hotel");
             if (
               !img ||
               img.includes("No+Image+Found") ||
               img.includes("Error+Fetching+Image")
             ) {
-              img = await getWikipediaImage(place.PlaceName);
+              img = await getWikipediaImage(hotel.HotelName);
             }
-            place.PlaceImageUrl = img;
+            hotel.HotelImageUrl =
+              hotel.HotelImageUrl || hotel.hotel_image_url || img;
           } catch (e) {
-            console.log("Error fetching place image", e);
+            console.log("Error fetching hotel image", e);
           }
         }
       }
+
+      // ---------- PROCESS ITINERARY ----------
+      if (parsed?.Itinerary && parsed.Itinerary.length > 0) {
+        for (let day of parsed.Itinerary) {
+          // AI may use `plan` or `Plan` or `Activities`
+          day.Plan = day.Plan || day.plan || day.Activities || [];
+
+          for (let place of day.Plan) {
+            // Normalise place fields
+            place.PlaceName = place.PlaceName || place.placeName || "";
+            place.PlaceDetails =
+              place.PlaceDetails || place.Place_Details || place.details || "";
+            place.GeoCoordinates =
+              place.GeoCoordinates ||
+              place.Geo_Coordinates ||
+              place.geo_coordinates ||
+              {};
+            place.TicketPricing =
+              place.TicketPricing ||
+              place.ticket_Pricing ||
+              place.price ||
+              "";
+            place.Rating = place.Rating || place.rating;
+            place.TimeNeeded =
+              place.TimeNeeded || place.Time_travel || place.duration || "";
+            place.BestTimeToVisit =
+              place.BestTimeToVisit ||
+              place.best_time_to_visit ||
+              place.bestTime ||
+              "";
+
+            try {
+              let img = await getPlaceImage(
+                (place.PlaceName || "") + " tourist attraction"
+              );
+              if (
+                !img ||
+                img.includes("No+Image+Found") ||
+                img.includes("Error+Fetching+Image")
+              ) {
+                img = await getWikipediaImage(place.PlaceName || "");
+              }
+              place.PlaceImageUrl =
+                place.PlaceImageUrl || place.Place_Image_Url || img;
+            } catch (e) {
+              console.log("Error fetching place image", e);
+            }
+          }
+        }
+      }
+
+      // ---------- FINAL TRIP DATA ----------
+      const finalTripData = {
+        userSelection: formData,
+        tripData: {
+          ...parsed.travelPlan,
+          HotelOptions: parsed.HotelOptions,
+          Itinerary: parsed.Itinerary,
+          coords,
+          image,
+        },
+      };
+
+      setLoading(false);
+      navigate("/view-trip", { state: finalTripData });
+    } catch (error) {
+      console.error("Trip generation failed:", error);
+      toast("Something went wrong. Try again.");
+      setLoading(false);
     }
+  };
 
-    // 🔧 5) FINAL TRIP OBJECT (unchanged, but now has correct data)
-    const finalTripData = {
-      userSelection: formData,
-      tripData: {
-        ...parsed.travelPlan,
-        HotelOptions: parsed.HotelOptions,
-        Itinerary: parsed.Itinerary,
-        coords,
-        image,
-      },
-    };
-
-    setLoading(false);
-    navigate("/view-trip", { state: finalTripData });
-  } catch (error) {
-    console.error("Trip generation failed:", error);
-    toast("Something went wrong. Try again.");
-    setLoading(false);
-  }
-};
-
+  // ---------------- LOCATION AUTOCOMPLETE ----------------
 
   const loadLocationOptions = async (inputValue) => {
     if (!inputValue || inputValue.length < 3) return [];
@@ -269,50 +325,51 @@ function CreateTrip() {
   const customSelectStyles = {
     control: (provided, state) => ({
       ...provided,
-      background: 'rgba(255, 255, 255, 0.9)',
-      border: state.isFocused ? '3px solid #a78bfa' : '2px solid #e5e7eb',
-      borderRadius: '16px',
-      boxShadow: state.isFocused 
-        ? '0 0 0 3px rgba(167, 139, 250, 0.1)' 
-        : '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-      minHeight: '56px',
-      fontSize: '16px',
-      fontFamily: 'Inter, sans-serif',
-      transition: 'all 0.3s ease',
-      ':hover': {
-        borderColor: '#a78bfa',
-        transform: 'translateY(-1px)',
-      }
+      background: "rgba(255, 255, 255, 0.9)",
+      border: state.isFocused ? "3px solid #a78bfa" : "2px solid #e5e7eb",
+      borderRadius: "16px",
+      boxShadow: state.isFocused
+        ? "0 0 0 3px rgba(167, 139, 250, 0.1)"
+        : "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
+      minHeight: "56px",
+      fontSize: "16px",
+      fontFamily: "Inter, sans-serif",
+      transition: "all 0.3s ease",
+      ":hover": {
+        borderColor: "#a78bfa",
+        transform: "translateY(-1px)",
+      },
     }),
     menu: (provided) => ({
       ...provided,
-      background: 'rgba(255, 255, 255, 0.98)',
-      border: '1px solid #e5e7eb',
-      borderRadius: '16px',
-      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-      fontFamily: 'Inter, sans-serif',
+      background: "rgba(255, 255, 255, 0.98)",
+      border: "1px solid #e5e7eb",
+      borderRadius: "16px",
+      boxShadow:
+        "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
+      fontFamily: "Inter, sans-serif",
     }),
     option: (provided, state) => ({
       ...provided,
-      backgroundColor: state.isSelected 
-        ? '#a78bfa' 
-        : state.isFocused 
-        ? 'rgba(167, 139, 250, 0.1)' 
-        : 'transparent',
-      color: state.isSelected ? 'white' : '#374151',
-      padding: '12px 16px',
-      fontSize: '15px',
-      fontWeight: '500',
-      borderRadius: '8px',
-      margin: '4px 8px',
-      cursor: 'pointer',
-      transition: 'all 0.2s ease',
+      backgroundColor: state.isSelected
+        ? "#a78bfa"
+        : state.isFocused
+        ? "rgba(167, 139, 250, 0.1)"
+        : "transparent",
+      color: state.isSelected ? "white" : "#374151",
+      padding: "12px 16px",
+      fontSize: "15px",
+      fontWeight: "500",
+      borderRadius: "8px",
+      margin: "4px 8px",
+      cursor: "pointer",
+      transition: "all 0.2s ease",
     }),
     placeholder: (provided) => ({
       ...provided,
-      color: '#9ca3af',
-      fontSize: '16px',
-      fontWeight: '400',
+      color: "#9ca3af",
+      fontSize: "16px",
+      fontWeight: "400",
     }),
   };
 
@@ -320,36 +377,74 @@ function CreateTrip() {
     <>
       <style jsx>{`
         @keyframes palmSway {
-          0%, 100% { transform: rotate(-3deg); }
-          50% { transform: rotate(3deg); }
+          0%,
+          100% {
+            transform: rotate(-3deg);
+          }
+          50% {
+            transform: rotate(3deg);
+          }
         }
         @keyframes waveAnimation {
-          0% { transform: translateX(-100px); }
-          100% { transform: translateX(100px); }
+          0% {
+            transform: translateX(-100px);
+          }
+          100% {
+            transform: translateX(100px);
+          }
         }
         @keyframes cloudMove {
-          0% { transform: translateX(-100px); }
-          100% { transform: translateX(calc(100vw + 100px)); }
+          0% {
+            transform: translateX(-100px);
+          }
+          100% {
+            transform: translateX(calc(100vw + 100px));
+          }
         }
         @keyframes airplaneFly {
-          0% { transform: translateX(-100px) translateY(0px); }
-          50% { transform: translateX(50vw) translateY(-20px); }
-          100% { transform: translateX(calc(100vw + 100px)) translateY(0px); }
+          0% {
+            transform: translateX(-100px) translateY(0px);
+          }
+          50% {
+            transform: translateX(50vw) translateY(-20px);
+          }
+          100% {
+            transform: translateX(calc(100vw + 100px)) translateY(0px);
+          }
         }
         @keyframes sunRays {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
         }
         @keyframes birdFly {
-          0% { transform: translateX(-50px) translateY(0px); }
-          25% { transform: translateX(25vw) translateY(-10px); }
-          50% { transform: translateX(50vw) translateY(-5px); }
-          75% { transform: translateX(75vw) translateY(-15px); }
-          100% { transform: translateX(calc(100vw + 50px)) translateY(0px); }
+          0% {
+            transform: translateX(-50px) translateY(0px);
+          }
+          25% {
+            transform: translateX(25vw) translateY(-10px);
+          }
+          50% {
+            transform: translateX(50vw) translateY(-5px);
+          }
+          75% {
+            transform: translateX(75vw) translateY(-15px);
+          }
+          100% {
+            transform: translateX(calc(100vw + 50px)) translateY(0px);
+          }
         }
         @keyframes umbrellaRotate {
-          0%, 100% { transform: rotate(-2deg); }
-          50% { transform: rotate(2deg); }
+          0%,
+          100% {
+            transform: rotate(-2deg);
+          }
+          50% {
+            transform: rotate(2deg);
+          }
         }
         .palm-tree {
           animation: palmSway 4s ease-in-out infinite;
@@ -374,12 +469,12 @@ function CreateTrip() {
         }
       `}</style>
 
-      <div 
+      <div
         className="min-h-screen font-['Inter'] bg-gradient-to-br from-sky-200 via-blue-100 to-purple-100 relative overflow-hidden"
-        style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+        style={{ fontFamily: "Inter, system-ui, sans-serif" }}
       >
         {/* Animated Travel Background Elements */}
-        
+
         {/* Sun with rays */}
         <div className="absolute top-10 right-10 w-20 h-20 z-0">
           <div className="sun-rays absolute inset-0 bg-gradient-to-r from-yellow-300 to-orange-400 rounded-full opacity-30"></div>
@@ -388,30 +483,76 @@ function CreateTrip() {
         </div>
 
         {/* Moving clouds */}
-        <div className="cloud absolute top-16 left-0 w-16 h-10 bg-white rounded-full opacity-60 z-0" style={{ animationDelay: '0s' }}></div>
-        <div className="cloud absolute top-24 left-0 w-12 h-8 bg-white rounded-full opacity-50 z-0" style={{ animationDelay: '8s' }}></div>
-        <div className="cloud absolute top-32 left-0 w-20 h-12 bg-white rounded-full opacity-40 z-0" style={{ animationDelay: '15s' }}></div>
+        <div
+          className="cloud absolute top-16 left-0 w-16 h-10 bg-white rounded-full opacity-60 z-0"
+          style={{ animationDelay: "0s" }}
+        ></div>
+        <div
+          className="cloud absolute top-24 left-0 w-12 h-8 bg-white rounded-full opacity-50 z-0"
+          style={{ animationDelay: "8s" }}
+        ></div>
+        <div
+          className="cloud absolute top-32 left-0 w-20 h-12 bg-white rounded-full opacity-40 z-0"
+          style={{ animationDelay: "15s" }}
+        ></div>
 
         {/* Flying airplane */}
-        <div className="airplane absolute top-20 left-0 text-2xl z-0" style={{ animationDelay: '5s' }}>✈️</div>
+        <div
+          className="airplane absolute top-20 left-0 text-2xl z-0"
+          style={{ animationDelay: "5s" }}
+        >
+          ✈️
+        </div>
 
         {/* Flying birds */}
-        <div className="bird absolute top-28 left-0 text-lg z-0" style={{ animationDelay: '2s' }}>🦅</div>
-        <div className="bird absolute top-36 left-0 text-sm z-0" style={{ animationDelay: '10s' }}>🐦</div>
+        <div
+          className="bird absolute top-28 left-0 text-lg z-0"
+          style={{ animationDelay: "2s" }}
+        >
+          🦅
+        </div>
+        <div
+          className="bird absolute top-36 left-0 text-sm z-0"
+          style={{ animationDelay: "10s" }}
+        >
+          🐦
+        </div>
 
         {/* Mountain silhouettes */}
         <div className="absolute bottom-0 left-0 right-0 z-0">
-          <svg className="w-full h-32" viewBox="0 0 1200 200" preserveAspectRatio="none">
-            <path d="M0,200 L0,100 L200,50 L400,80 L600,30 L800,60 L1000,40 L1200,70 L1200,200 Z" 
-                  fill="url(#mountainGradient)" opacity="0.3"/>
-            <path d="M0,200 L0,140 L150,90 L350,110 L550,70 L750,90 L950,80 L1200,100 L1200,200 Z" 
-                  fill="url(#mountainGradient2)" opacity="0.2"/>
+          <svg
+            className="w-full h-32"
+            viewBox="0 0 1200 200"
+            preserveAspectRatio="none"
+          >
+            <path
+              d="M0,200 L0,100 L200,50 L400,80 L600,30 L800,60 L1000,40 L1200,70 L1200,200 Z"
+              fill="url(#mountainGradient)"
+              opacity="0.3"
+            />
+            <path
+              d="M0,200 L0,140 L150,90 L350,110 L550,70 L750,90 L950,80 L1200,100 L1200,200 Z"
+              fill="url(#mountainGradient2)"
+              opacity="0.2"
+            />
             <defs>
-              <linearGradient id="mountainGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+              <linearGradient
+                id="mountainGradient"
+                x1="0%"
+                y1="0%"
+                x2="0%"
+                y2="100%"
+              >
                 <stop offset="0%" stopColor="#6366f1" />
                 <stop offset="100%" stopColor="#8b5cf6" />
               </linearGradient>
-              <linearGradient id="mountainGradient2" x1="0%" y1="0%" x2="0%" y2="100%">
+              <linearGradient
+                id="mountainGradient2"
+                x1="0%"
+                y1="0%"
+                x2="0%"
+                y2="100%"
+              >
                 <stop offset="0%" stopColor="#a78bfa" />
                 <stop offset="100%" stopColor="#c084fc" />
               </linearGradient>
@@ -420,32 +561,92 @@ function CreateTrip() {
         </div>
 
         {/* Palm trees */}
-        <div className="palm-tree absolute bottom-20 left-10 text-6xl z-0" style={{ animationDelay: '0s' }}>🌴</div>
-        <div className="palm-tree absolute bottom-16 left-32 text-4xl z-0" style={{ animationDelay: '1s' }}>🌴</div>
-        <div className="palm-tree absolute bottom-24 right-20 text-5xl z-0" style={{ animationDelay: '2s' }}>🌴</div>
+        <div
+          className="palm-tree absolute bottom-20 left-10 text-6xl z-0"
+          style={{ animationDelay: "0s" }}
+        >
+          🌴
+        </div>
+        <div
+          className="palm-tree absolute bottom-16 left-32 text-4xl z-0"
+          style={{ animationDelay: "1s" }}
+        >
+          🌴
+        </div>
+        <div
+          className="palm-tree absolute bottom-24 right-20 text-5xl z-0"
+          style={{ animationDelay: "2s" }}
+        >
+          🌴
+        </div>
 
         {/* Beach elements */}
-        <div className="umbrella absolute bottom-32 left-24 text-3xl z-0">🏖️</div>
+        <div className="umbrella absolute bottom-32 left-24 text-3xl z-0">
+          🏖️
+        </div>
         <div className="absolute bottom-28 left-44 text-2xl z-0">🏄‍♂️</div>
         <div className="absolute bottom-20 right-32 text-2xl z-0">🐚</div>
 
         {/* Ocean waves */}
         <div className="absolute bottom-8 left-0 right-0 z-0">
           <div className="wave w-full h-8 bg-gradient-to-r from-blue-300 to-cyan-400 opacity-40 rounded-full"></div>
-          <div className="wave w-full h-6 bg-gradient-to-r from-blue-400 to-cyan-500 opacity-30 rounded-full mt-2" style={{ animationDelay: '1s' }}></div>
+          <div
+            className="wave w-full h-6 bg-gradient-to-r from-blue-400 to-cyan-500 opacity-30 rounded-full mt-2"
+            style={{ animationDelay: "1s" }}
+          ></div>
         </div>
 
         {/* Additional travel elements */}
-        <div className="absolute top-1/4 left-5 text-2xl z-0 animate-bounce" style={{ animationDelay: '3s' }}>🗻</div>
-        <div className="absolute top-1/3 right-10 text-xl z-0 animate-pulse" style={{ animationDelay: '4s' }}>🏔️</div>
-        <div className="absolute top-1/2 left-20 text-lg z-0 animate-bounce" style={{ animationDelay: '6s' }}>🌊</div>
-        <div className="absolute top-3/4 right-5 text-2xl z-0 animate-pulse" style={{ animationDelay: '7s' }}>🏝️</div>
+        <div
+          className="absolute top-1/4 left-5 text-2xl z-0 animate-bounce"
+          style={{ animationDelay: "3s" }}
+        >
+          🗻
+        </div>
+        <div
+          className="absolute top-1/3 right-10 text-xl z-0 animate-pulse"
+          style={{ animationDelay: "4s" }}
+        >
+          🏔️
+        </div>
+        <div
+          className="absolute top-1/2 left-20 text-lg z-0 animate-bounce"
+          style={{ animationDelay: "6s" }}
+        >
+          🌊
+        </div>
+        <div
+          className="absolute top-3/4 right-5 text-2xl z-0 animate-pulse"
+          style={{ animationDelay: "7s" }}
+        >
+          🏝️
+        </div>
 
         {/* Trees on mountains */}
-        <div className="absolute bottom-40 left-1/4 text-3xl z-0 animate-pulse" style={{ animationDelay: '2s' }}>🌲</div>
-        <div className="absolute bottom-36 left-1/3 text-2xl z-0 animate-pulse" style={{ animationDelay: '4s' }}>🌲</div>
-        <div className="absolute bottom-44 right-1/4 text-3xl z-0 animate-pulse" style={{ animationDelay: '5s' }}>🌲</div>
-        <div className="absolute bottom-38 right-1/3 text-2xl z-0 animate-pulse" style={{ animationDelay: '1s' }}>🌲</div>
+        <div
+          className="absolute bottom-40 left-1/4 text-3xl z-0 animate-pulse"
+          style={{ animationDelay: "2s" }}
+        >
+          🌲
+        </div>
+        <div
+          className="absolute bottom-36 left-1/3 text-2xl z-0 animate-pulse"
+          style={{ animationDelay: "4s" }}
+        >
+          🌲
+        </div>
+        <div
+          className="absolute bottom-44 right-1/4 text-3xl z-0 animate-pulse"
+          style={{ animationDelay: "5s" }}
+        >
+          🌲
+        </div>
+        <div
+          className="absolute bottom-38 right-1/3 text-2xl z-0 animate-pulse"
+          style={{ animationDelay: "1s" }}
+        >
+          🌲
+        </div>
 
         {/* Floating travel icons */}
         <div className="absolute top-1/5 left-1/4 w-16 h-16 bg-gradient-to-br from-pink-200 to-purple-200 rounded-full opacity-20 animate-pulse flex items-center justify-center">
@@ -472,7 +673,6 @@ function CreateTrip() {
           {/* Main Form Container */}
           <div className="max-w-4xl mx-auto">
             <div className="bg-white/85 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 p-8 md:p-12">
-              
               {/* Destination Section */}
               <div className="mb-10">
                 <div className="flex items-center gap-3 mb-6">
@@ -480,24 +680,30 @@ function CreateTrip() {
                     <span className="text-2xl">🌍</span>
                   </div>
                   <div>
-                    <h3 className="text-2xl font-bold text-gray-800">Where would you like to go?</h3>
-                    <p className="text-gray-600 font-medium">Choose your dream destination</p>
+                    <h3 className="text-2xl font-bold text-gray-800">
+                      Where would you like to go?
+                    </h3>
+                    <p className="text-gray-600 font-medium">
+                      Choose your dream destination
+                    </p>
                   </div>
                 </div>
-                
+
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl p-6 shadow-inner">
                   <AsyncSelect
                     cacheOptions
                     defaultOptions
                     loadOptions={loadLocationOptions}
                     placeholder="🔍 Search for cities, countries, or landmarks..."
-                    onChange={(option) => handleInputChange("location", option.label)}
+                    onChange={(option) =>
+                      handleInputChange("location", option.label)
+                    }
                     styles={customSelectStyles}
                     className="mb-3"
                   />
                   <p className="text-sm text-gray-500 font-medium flex items-center gap-2">
                     <span>💡</span>
-                    Try "Paris", "Tokyo", "Bali", or "New York"
+                    <span>Try "Paris", "Tokyo", "Bali", or "New York"</span>
                   </p>
                 </div>
               </div>
@@ -509,18 +715,24 @@ function CreateTrip() {
                     <span className="text-2xl">📅</span>
                   </div>
                   <div>
-                    <h3 className="text-2xl font-bold text-gray-800">How many days?</h3>
-                    <p className="text-gray-600 font-medium">Perfect for 1-5 day adventures</p>
+                    <h3 className="text-2xl font-bold text-gray-800">
+                      How many days?
+                    </h3>
+                    <p className="text-gray-600 font-medium">
+                      Perfect for 1-5 day adventures
+                    </p>
                   </div>
                 </div>
-                
+
                 <div className="bg-gradient-to-r from-orange-50 to-pink-50 rounded-2xl p-6 shadow-inner">
                   <Input
                     placeholder="Enter number of days (1-5)"
                     type="number"
                     min="1"
                     max="5"
-                    onChange={(e) => handleInputChange("totalDays", e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange("totalDays", e.target.value)
+                    }
                     className="h-14 text-lg font-medium border-2 border-gray-200 rounded-2xl focus:border-orange-400 focus:ring-4 focus:ring-orange-100 transition-all duration-300 bg-white/90"
                   />
                 </div>
@@ -533,16 +745,22 @@ function CreateTrip() {
                     <span className="text-2xl">💰</span>
                   </div>
                   <div>
-                    <h3 className="text-2xl font-bold text-gray-800">What's your budget?</h3>
-                    <p className="text-gray-600 font-medium">Choose your comfort level</p>
+                    <h3 className="text-2xl font-bold text-gray-800">
+                      What's your budget?
+                    </h3>
+                    <p className="text-gray-600 font-medium">
+                      Choose your comfort level
+                    </p>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {SelectBudgetOptions.map((item, index) => (
                     <div
                       key={index}
-                      onClick={() => handleInputChange("budget", item.title)}
+                      onClick={() =>
+                        handleInputChange("budget", item.title)
+                      }
                       className={`group relative p-6 rounded-2xl border-3 cursor-pointer transition-all duration-300 transform hover:scale-105 shadow-lg ${
                         formData?.budget === item.title
                           ? "border-green-400 bg-gradient-to-br from-green-50 to-blue-50 shadow-xl shadow-green-200/50"
@@ -553,8 +771,12 @@ function CreateTrip() {
                         <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">
                           {item.icon}
                         </div>
-                        <h4 className="font-bold text-lg text-gray-800 mb-2">{item.title}</h4>
-                        <p className="text-sm text-gray-600 font-medium leading-relaxed">{item.desc}</p>
+                        <h4 className="font-bold text-lg text-gray-800 mb-2">
+                          {item.title}
+                        </h4>
+                        <p className="text-sm text-gray-600 font-medium leading-relaxed">
+                          {item.desc}
+                        </p>
                       </div>
                       {formData?.budget === item.title && (
                         <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-r from-green-400 to-blue-500 rounded-full flex items-center justify-center shadow-lg">
@@ -573,16 +795,22 @@ function CreateTrip() {
                     <span className="text-2xl">👥</span>
                   </div>
                   <div>
-                    <h3 className="text-2xl font-bold text-gray-800">Who's joining you?</h3>
-                    <p className="text-gray-600 font-medium">Tell us about your travel companions</p>
+                    <h3 className="text-2xl font-bold text-gray-800">
+                      Who's joining you?
+                    </h3>
+                    <p className="text-gray-600 font-medium">
+                      Tell us about your travel companions
+                    </p>
                   </div>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {SelectTravelList.map((item, index) => (
                     <div
                       key={index}
-                      onClick={() => handleInputChange("traveler", item.people)}
+                      onClick={() =>
+                        handleInputChange("traveler", item.people)
+                      }
                       className={`group relative p-6 rounded-2xl border-3 cursor-pointer transition-all duration-300 transform hover:scale-105 shadow-lg ${
                         formData?.traveler === item.people
                           ? "border-pink-400 bg-gradient-to-br from-pink-50 to-purple-50 shadow-xl shadow-pink-200/50"
@@ -593,8 +821,12 @@ function CreateTrip() {
                         <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">
                           {item.icon}
                         </div>
-                        <h4 className="font-bold text-lg text-gray-800 mb-2">{item.title}</h4>
-                        <p className="text-sm text-gray-600 font-medium leading-relaxed">{item.desc}</p>
+                        <h4 className="font-bold text-lg text-gray-800 mb-2">
+                          {item.title}
+                        </h4>
+                        <p className="text-sm text-gray-600 font-medium leading-relaxed">
+                          {item.desc}
+                        </p>
                       </div>
                       {formData?.traveler === item.people && (
                         <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-r from-pink-400 to-purple-500 rounded-full flex items-center justify-center shadow-lg">
@@ -641,7 +873,7 @@ function CreateTrip() {
                   <img src="/logo.svg" className="w-12 h-12" alt="Logo" />
                 </div>
               </div>
-              
+
               <div className="space-y-4">
                 <h2 className="font-bold text-2xl text-gray-800">
                   🔐 Welcome to Your Journey
@@ -659,7 +891,7 @@ function CreateTrip() {
                   <FcGoogle className="h-8 w-8" />
                   <span className="text-lg">Continue with Google</span>
                 </Button>
-                
+
                 <div className="flex items-center justify-center gap-2 text-sm text-gray-500 font-medium">
                   <span>🛡️</span>
                   <span>Secure & trusted by thousands of travelers</span>
