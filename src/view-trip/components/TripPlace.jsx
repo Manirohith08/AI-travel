@@ -13,7 +13,7 @@ function TripPlace({ trip }) {
     );
   }
 
-  // ⭐ Normalize itinerary — supports any key the AI might return
+  // Normalize itinerary
   const itinerary =
     trip.itinerary ||
     trip.Itinerary ||
@@ -35,7 +35,7 @@ function TripPlace({ trip }) {
       <h2 className="font-semibold text-xl mb-4">Places to Visit</h2>
 
       {itinerary.map((day, dayIndex) => {
-        // ⭐ Normalize per-day plan keys
+        // Normalize per-day activities list
         const places =
           day.plan ||
           day.Plan ||
@@ -46,7 +46,9 @@ function TripPlace({ trip }) {
         return (
           <div key={dayIndex} className="mb-6">
             <h3 className="text-lg font-bold mb-2">
-              {day.day || `Day ${dayIndex + 1}`}
+              {typeof day.day === "string" && day.day.toLowerCase().includes("day")
+                ? day.day
+                : `Day ${dayIndex + 1}`}
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-7">
