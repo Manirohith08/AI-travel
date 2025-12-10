@@ -7,7 +7,8 @@ function HotelCardItem({ item, index = 0 }) {
   const name =
     item?.HotelName ||
     item?.hotelName ||
-    item?.hotel_name ||
+    item?.["Hotel Name"] ||
+    item?.["hotel name"] ||
     item?.name ||
     "Unnamed Hotel";
 
@@ -16,8 +17,17 @@ function HotelCardItem({ item, index = 0 }) {
     item?.HotelAddress ||
     item?.hotelAddress ||
     item?.["Hotel address"] ||
+    item?.["hotel address"] ||
     item?.address ||
     "";
+
+  // Normalize image
+  const image =
+    item?.HotelImageUrl ||
+    item?.hotelImageUrl ||
+    item?.["hotel image url"] ||
+    item?.image ||
+    "/hotel-placeholder.jpg"; // static fallback
 
   // Normalize rating
   const rating =
@@ -26,14 +36,7 @@ function HotelCardItem({ item, index = 0 }) {
     item?.hotelRating ||
     "--";
 
-  // Use AI image, or fallback placeholder
-  const image =
-    item?.hotelImageUrl ||
-    item?.HotelImageUrl ||
-    item?.["hotel image url"] ||
-    "/road-trip-vacation.jpg";
-
-  // Coordinates for maps
+  // Normalize coordinates
   const coords =
     item?.geoCoordinates ||
     item?.GeoCoordinates ||
@@ -54,7 +57,6 @@ function HotelCardItem({ item, index = 0 }) {
 
   return (
     <div className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition border overflow-hidden">
-      {/* IMAGE (NO FETCH) */}
       <div className="relative">
         <img
           src={image}
@@ -67,7 +69,6 @@ function HotelCardItem({ item, index = 0 }) {
         </span>
       </div>
 
-      {/* TEXT CONTENT */}
       <div className="p-5 space-y-2">
         <h3 className="font-bold text-lg">{name}</h3>
 
