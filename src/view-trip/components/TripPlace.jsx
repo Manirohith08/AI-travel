@@ -1,30 +1,18 @@
-// TripPlace.jsx
-
-import React from 'react';
-import PlaceCardItem from './PlaceCardItem';
+import React from "react";
+import PlaceCardItem from "./PlaceCardItem";
 
 function TripPlace({ trip }) {
-  if (!trip) {
-    return (
-      <div className="my-6">
-        <h2 className="font-semibold text-xl">Places to Visit</h2>
-        <p className="text-gray-500">Trip data not found.</p>
-      </div>
-    );
-  }
-
-  // Normalize itinerary
   const itinerary =
-    trip.itinerary ||
-    trip.Itinerary ||
-    trip.tripData?.itinerary ||
-    trip.tripData?.Itinerary ||
+    trip?.itinerary ||
+    trip?.Itinerary ||
+    trip?.tripData?.itinerary ||
+    trip?.tripData?.Itinerary ||
     [];
 
-  if (!Array.isArray(itinerary) || itinerary.length === 0) {
+  if (!itinerary.length) {
     return (
       <div className="my-6">
-        <h2 className="font-semibold text-xl">Places to Visit</h2>
+        <h2 className="text-xl font-semibold">Places to Visit</h2>
         <p className="text-gray-500">No places added to the itinerary.</p>
       </div>
     );
@@ -32,28 +20,25 @@ function TripPlace({ trip }) {
 
   return (
     <div className="my-6">
-      <h2 className="font-semibold text-xl mb-4">Places to Visit</h2>
+      <h2 className="text-xl font-semibold mb-4">Places to Visit</h2>
 
-      {itinerary.map((day, dayIndex) => {
-        // Normalize per-day activities list
+      {itinerary.map((day, i) => {
         const places =
-          day.plan ||
-          day.Plan ||
-          day.activities ||
-          day.Activities ||
+          day?.plan ||
+          day?.Plan ||
+          day?.activities ||
+          day?.Activities ||
           [];
 
         return (
-          <div key={dayIndex} className="mb-6">
-            <h3 className="text-lg font-bold mb-2">
-              {typeof day.day === "string" && day.day.toLowerCase().includes("day")
-                ? day.day
-                : `Day ${dayIndex + 1}`}
+          <div key={i} className="mb-6">
+            <h3 className="text-lg font-bold mb-3">
+              {day?.day || `Day ${i + 1}`}
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-7">
-              {places.map((place, placeIndex) => (
-                <PlaceCardItem key={placeIndex} place={place} />
+              {places.map((p, idx) => (
+                <PlaceCardItem key={idx} place={p} />
               ))}
             </div>
           </div>
