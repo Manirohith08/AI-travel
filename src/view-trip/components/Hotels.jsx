@@ -11,7 +11,7 @@ function Hotels({ trip }) {
     );
   }
 
-  // Universal hotel extractor – supports all formats
+  // FULL universal hotel extractor
   const hotels =
     trip?.Hotels ||
     trip?.Hotel ||
@@ -24,6 +24,7 @@ function Hotels({ trip }) {
     trip?.tripData?.hotels ||
     trip?.tripData?.hotel ||
     trip?.tripData?.hotelOptions ||
+    trip?.tripData?.HotelOptions || // AI created key
     trip?.tripData?.hotelRecommendations ||
     [];
 
