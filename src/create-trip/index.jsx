@@ -31,15 +31,28 @@ function CreateTrip() {
   const navigate = useNavigate();
 
   const extractValidJSON = (text) => {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start !== -1 && end !== -1) {
-      try {
-        return JSON.parse(text.substring(start, end + 1));
-      } catch (e) {
-        console.error("JSON parsing failed:", e);
-        return null;
+    try {
+      // 1. Remove Markdown code blocks (```json and ```)
+      let cleanText = text.replace(/```json/g, "").replace(/```/g, "");
+
+      // 2. Find the first '{' and the last '}'
+      const start = cleanText.indexOf("{");
+      const end = cleanText.lastIndexOf("}");
+
+      if (start !== -1 && end !== -1) {
+        cleanText = cleanText.substring(start, end + 1);
+
+        // 3. Fix common AI "Double Quote" hallucination (""key" -> "key")
+        // This regex looks for double double-quotes at the start of keys
+        cleanText = cleanText.replace(/""(\w+)"/g, '"$1"');
+
+        return JSON.parse(cleanText);
       }
+    } catch (e) {
+      console.error("JSON parsing failed:", e);
+      // Optional: Log the text that failed to help debugging
+      console.log("Failed Text:", text); 
+      return null;
     }
     return null;
   };
