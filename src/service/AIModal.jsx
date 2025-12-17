@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI(apiKey);
 
 // 👇 This selects the Gemini 2.0 Flash model
 const model = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash-001",
+  model: "gemini-2.0-flash",
 });
 
 const generationConfig = {
