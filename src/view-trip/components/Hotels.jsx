@@ -11,16 +11,15 @@ function Hotels({ trip }) {
     );
   }
 
-  // UPDATED: Added the correct paths finding 'travelPlan' and 'hotelsOptions'
+  // ✅ CORRECT extractor (matches AI response exactly)
   const hotels =
-    trip?.tripData?.travelPlan?.hotelsOptions || // ✅ Exact match from your logs
-    trip?.travelPlan?.hotelsOptions ||           // Fallback if structure is shallower
-    trip?.tripData?.hotelOptions ||              // Old fallbacks...
-    trip?.tripData?.HotelOptions ||
+    trip?.travelPlan?.hotelsOptions ||   // ⭐ MAIN FIX
     trip?.hotelOptions ||
     trip?.Hotels ||
     trip?.hotels ||
     [];
+
+  console.log("HOTELS:", hotels); // 🔍 verify once
 
   if (!Array.isArray(hotels) || hotels.length === 0) {
     return (
