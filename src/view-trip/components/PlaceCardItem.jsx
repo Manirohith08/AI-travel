@@ -9,12 +9,27 @@ function PlaceCardItem({ place }) {
     place?.name ||
     "Unknown Place";
 
-  const image =
+  // 1. GET RAW IMAGE URL
+  let imageSrc =
     place?.PlaceImageUrl ||
     place?.placeImageUrl ||
     place?.["Place Image Url"] ||
     place?.["place image url"] ||
-    "/place-placeholder.jpg"; // static fallback
+    "";
+
+  // 2. FIX IMAGE LOGIC
+  // The API often returns "example.com" or broken "source.unsplash.com" links.
+  // We force a placeholder if the URL looks fake or broken.
+  if (
+    !imageSrc ||
+    imageSrc.includes("example.com") ||
+    imageSrc.includes("source.unsplash.com")
+  ) {
+    // Use a specific valid image or your local placeholder
+    imageSrc = "/placeholder.jpg"; 
+    // OR use this generic travel image if you don't have a local file:
+    // imageSrc = "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?q=80&w=1000&auto=format&fit=crop";
+  }
 
   const details =
     place?.PlaceDetails ||
@@ -38,19 +53,24 @@ function PlaceCardItem({ place }) {
   const lat = coords.latitude;
   const lng = coords.longitude;
 
+  // 3. FIX MAPS URL
+  // Use the standard Google Maps Search API
   const mapsUrl =
     lat && lng
-      ? `https://www.google.com/maps?q=${lat},${lng}`
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-          name
-        )}`;
+      ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
 
   return (
-    <div className="rounded-3xl bg-white border shadow hover:shadow-lg transition p-4">
+    <div className="rounded-3xl bg-white border shadow hover:shadow-lg transition p-4 flex flex-col h-full">
       <img
-        src={image}
+        src={imageSrc}
         className="rounded-xl w-full h-40 object-cover mb-3"
         alt={name}
+        // Fallback if the image fails to load
+        onError={(e) => {
+          e.target.src = "/placeholder.jpg";
+          e.target.onerror = null;
+        }}
       />
 
       <h3 className="font-bold text-lg">{name}</h3>
@@ -60,14 +80,16 @@ function PlaceCardItem({ place }) {
         ⭐ <span className="text-black">{rating}</span>
       </div>
 
-      <a
-        target="_blank"
-        rel="noopener noreferrer"
-        href={mapsUrl}
-        className="mt-3 block bg-purple-600 text-white text-center rounded-lg py-2 hover:bg-purple-700 transition"
-      >
-        Open in Maps
-      </a>
+      <div className="mt-auto"> {/* Pushes button to bottom */}
+        <a
+          target="_blank"
+          rel="noopener noreferrer"
+          href={mapsUrl}
+          className="mt-3 block bg-purple-600 text-white text-center rounded-lg py-2 hover:bg-purple-700 transition"
+        >
+          Open in Maps
+        </a>
+      </div>
     </div>
   );
 }
