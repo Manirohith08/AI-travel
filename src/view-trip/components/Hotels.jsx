@@ -2,6 +2,9 @@ import React from "react";
 import HotelCardItem from "./HotelCardItem";
 
 function Hotels({ trip }) {
+  // 1. DEBUG: Check what 'trip' actually looks like in the console
+  console.log("Trip Object received:", trip);
+
   if (!trip) {
     return (
       <div className="my-6">
@@ -11,15 +14,24 @@ function Hotels({ trip }) {
     );
   }
 
-  // ✅ CORRECT extractor (matches AI response exactly)
+  // 2. UNIVERSAL EXTRACTOR
+  // The data is usually inside 'trip.tripData', not just 'trip'
   const hotels =
-    trip?.travelPlan?.hotelsOptions ||   // ⭐ MAIN FIX
-    trip?.hotelOptions ||
-    trip?.Hotels ||
+    // Check inside tripData (Most common DB structure)
+    trip?.tripData?.travelPlan?.hotelsOptions || 
+    trip?.tripData?.hotels ||
+    trip?.tripData?.Hotels ||
+    
+    // Check directly (If trip IS the data object)
+    trip?.travelPlan?.hotelsOptions ||
     trip?.hotels ||
+    trip?.Hotels ||
+    
+    // Fallback for flat structures
+    trip?.hotelOptions ||
     [];
 
-  console.log("HOTELS:", hotels); // 🔍 verify once
+  console.log("FINAL HOTELS LIST:", hotels);
 
   if (!Array.isArray(hotels) || hotels.length === 0) {
     return (
