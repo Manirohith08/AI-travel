@@ -11,21 +11,15 @@ function Hotels({ trip }) {
     );
   }
 
-  // FULL universal hotel extractor
+  // UPDATED: Added the correct paths finding 'travelPlan' and 'hotelsOptions'
   const hotels =
-    trip?.Hotels ||
-    trip?.Hotel ||
-    trip?.hotels ||
-    trip?.hotel ||
+    trip?.tripData?.travelPlan?.hotelsOptions || // ✅ Exact match from your logs
+    trip?.travelPlan?.hotelsOptions ||           // Fallback if structure is shallower
+    trip?.tripData?.hotelOptions ||              // Old fallbacks...
+    trip?.tripData?.HotelOptions ||
     trip?.hotelOptions ||
-    trip?.hotelRecommendations ||
-    trip?.tripData?.Hotels ||
-    trip?.tripData?.Hotel ||
-    trip?.tripData?.hotels ||
-    trip?.tripData?.hotel ||
-    trip?.tripData?.hotelOptions ||
-    trip?.tripData?.HotelOptions || // AI created key
-    trip?.tripData?.hotelRecommendations ||
+    trip?.Hotels ||
+    trip?.hotels ||
     [];
 
   if (!Array.isArray(hotels) || hotels.length === 0) {
