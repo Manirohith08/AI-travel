@@ -26,8 +26,9 @@ function HotelCardItem({ item, index = 0 }) {
     item?.hotelRating ||
     "--";
 
-  // UNIVERSAL IMAGE FIX (MAIN ISSUE)
-  const image =
+  // --- FIX IMAGE LOGIC ---
+  // 1. Get the raw URL from any possible key
+  let image =
     item?.hotelImageUrl ||
     item?.HotelImageUrl ||
     item?.HotelImage ||
@@ -38,7 +39,16 @@ function HotelCardItem({ item, index = 0 }) {
     item?.imageUrl ||
     item?.photo ||
     item?.photoUrl ||
-    "/road-trip-vacation.jpg"; // fallback
+    "";
+
+  // 2. Filter out fake/broken URLs
+  if (
+    !image ||
+    image.includes("example.com") ||
+    image.includes("unsplash.com")
+  ) {
+    image = "/placeholder.jpg"; // Force fallback for AI dummy links
+  }
 
   // Coordinates for maps
   const coords =
@@ -50,9 +60,10 @@ function HotelCardItem({ item, index = 0 }) {
   const lat = coords.latitude;
   const lng = coords.longitude;
 
+  // Fix Maps URL (Used standard Google Maps Search URL)
   const mapsUrl =
     lat && lng
-      ? `https://www.google.com/maps?q=${lat},${lng}`
+      ? `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`
       : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
           name + " " + address
         )}`;
@@ -60,13 +71,18 @@ function HotelCardItem({ item, index = 0 }) {
   const emoji = HOTEL_EMOJIS[index % HOTEL_EMOJIS.length];
 
   return (
-    <div className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition border overflow-hidden">
+    <div className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition border overflow-hidden flex flex-col h-full">
       {/* IMAGE */}
-      <div className="relative">
+      <div className="relative h-48">
         <img
           src={image}
           alt={name}
-          className="w-full h-48 object-cover"
+          className="w-full h-full object-cover"
+          // Final safety net: if image fails to load, swap to placeholder
+          onError={(e) => {
+            e.target.src = "/placeholder.jpg";
+            e.target.onerror = null;
+          }}
         />
 
         <span className="absolute top-3 left-3 bg-white bg-opacity-80 rounded-full px-2 py-1 shadow text-2xl">
@@ -74,14 +90,14 @@ function HotelCardItem({ item, index = 0 }) {
         </span>
       </div>
 
-      <div className="p-5 space-y-2">
+      <div className="p-5 space-y-2 flex flex-col flex-grow">
         <h3 className="font-bold text-lg">{name}</h3>
 
         <p className="text-gray-600 text-sm flex items-center gap-1">
           📍 {address || "Address not available"}
         </p>
 
-        <p className="text-yellow-500 text-sm">
+        <p className="text-yellow-500 text-sm mt-auto">
           ⭐ <span className="text-black">{rating}</span>
         </p>
 
